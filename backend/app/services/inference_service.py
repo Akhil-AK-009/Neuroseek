@@ -1,25 +1,70 @@
-# app/services/inference_service.py
-
-def run_handwriting_model():
-    # TODO: Replace with real model loading + inference
-    return 0.42
+import torch
+import numpy as np
+from app.core.model_loader import MODELS, DEVICE
 
 
-def run_speech_model():
-    # TODO: Replace with real model loading + inference
-    return 0.38
+# -----------------------------
+# 🔹 HANDWRITING INFERENCE
+# -----------------------------
+def run_handwriting_model(image_tensor, variant="spiral"):
+    """
+    image_tensor: preprocessed tensor (1,3,224,224)
+    variant: 'spiral' or 'wave'
+    """
+
+    model = MODELS[variant]
+
+    with torch.no_grad():
+        image_tensor = image_tensor.to(DEVICE)
+        outputs = model(image_tensor)
+        probs = torch.softmax(outputs, dim=1)
+        risk_score = probs[0][1].item()  # class 1 = PD
+
+    return risk_score
 
 
-def run_gait_model():
-    # TODO: Replace with real model loading + inference
-    return 0.67
+# -----------------------------
+# 🔹 SPEECH INFERENCE
+# -----------------------------
+def run_speech_model(spectrogram_tensor):
+    """
+    spectrogram_tensor: (1,3,224,224)
+    """
+
+    model = MODELS["speech"]
+
+    with torch.no_grad():
+        spectrogram_tensor = spectrogram_tensor.to(DEVICE)
+        outputs = model(spectrogram_tensor)
+        probs = torch.softmax(outputs, dim=1)
+        risk_score = probs[0][1].item()
+
+    return risk_score
 
 
+# -----------------------------
+# 🔹 GAIT INFERENCE
+# -----------------------------
+def run_gait_model(feature_vector):
+    """
+    feature_vector: numpy array shape (1, n_features)
+    """
+
+    model = MODELS["gait_model"]
+    scaler = MODELS["gait_scaler"]
+    threshold = MODELS["gait_threshold"]
+
+    scaled_features = scaler.transform(feature_vector)
+
+    prob = model.predict_proba(scaled_features)[0][1]
+
+    return float(prob)
+
+
+# -----------------------------
+# 🔹 WEIGHTED LATE FUSION
+# -----------------------------
 def compute_final_risk(hw_score, speech_score, gait_score):
-    """
-    Weighted Late Fusion:
-    p_final = 0.30*p_HW + 0.20*p_VOICE + 0.50*p_GAIT
-    """
 
     final_score = (
         0.30 * hw_score +
@@ -35,19 +80,3 @@ def compute_final_risk(hw_score, speech_score, gait_score):
         risk_level = "High"
 
     return final_score, risk_level
-
-
-def run_full_inference():
-    hw = run_handwriting_model()
-    speech = run_speech_model()
-    gait = run_gait_model()
-
-    final_score, risk_level = compute_final_risk(hw, speech, gait)
-
-    return {
-        "handwriting_score": hw,
-        "speech_score": speech,
-        "gait_score": gait,
-        "final_risk_score": final_score,
-        "risk_level": risk_level
-    }
