@@ -1,29 +1,74 @@
+# ----------------------------
 # Python
+# ----------------------------
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
 
+# ----------------------------
 # Virtual Environment
+# ----------------------------
 venv/
 .env/
+.env.*
 
-# Environment variables
+# ----------------------------
+# Environment Variables
+# ----------------------------
 .env
 
+# ----------------------------
 # Logs
+# ----------------------------
 *.log
 
-# OS files
+# ----------------------------
+# OS Files
+# ----------------------------
 .DS_Store
 Thumbs.db
 
-# Model files (very important)
+# ----------------------------
+# IDE
+# ----------------------------
+.vscode/
+.idea/
+
+# ----------------------------
+# Model Files (DO NOT PUSH)
+# ----------------------------
+ml_models/
 *.pth
 *.pt
+*.pkl
+*.joblib
+*.h5
+*.onnx
 
-# Upload folders
+# ----------------------------
+# Media / Upload Files
+# ----------------------------
 uploads/
+*.mp4
+*.avi
+*.mov
+*.wav
+*.mp3
 
+# ----------------------------
 # Database
+# ----------------------------
 *.sqlite3
+
+# ----------------------------
+# Build / Distribution
+# ----------------------------
+build/
+dist/
+*.egg-info/
+
+backend/temp_audio/
+backend/temp_handwriting/
+backend/temp_videos/
+backend/temp_uploads/
