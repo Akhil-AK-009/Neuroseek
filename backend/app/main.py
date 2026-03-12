@@ -1,9 +1,12 @@
 from fastapi import FastAPI, Depends, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+# Database
 from app.db.session import engine
 from app.db.base import Base
+from app.api.deps import get_db
 
 # Models
 from app.models.user import User
@@ -19,41 +22,72 @@ from app.core.security import (
     get_current_user
 )
 
-# 🔹 Routers
+# Routers
 from app.api.routes.patient import router as patient_router
 from app.api.routes.screening import router as screening_router
 
-# 🔹 DB Dependency
-from app.api.deps import get_db
-
-# 🔥 NEW: Model Loader
+# ML Model Loader
 from app.core.model_loader import load_models
 
 
+# --------------------------------------------------
+# FASTAPI APP
+# --------------------------------------------------
+
 app = FastAPI(title="NeuroSeek API")
 
-# 🔹 Create DB Tables
+
+# --------------------------------------------------
+# CORS (for mobile app / frontend)
+# --------------------------------------------------
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],   # For development. Later restrict domain.
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+
+# --------------------------------------------------
+# CREATE DATABASE TABLES
+# --------------------------------------------------
+
 Base.metadata.create_all(bind=engine)
 
-# 🔹 Register Routers
+
+# --------------------------------------------------
+# REGISTER ROUTERS
+# --------------------------------------------------
+
 app.include_router(patient_router)
 app.include_router(screening_router)
 
 
 # --------------------------------------------------
-#  STARTUP EVENT — LOAD ML MODELS ONCE
+# STARTUP EVENT — LOAD ML MODELS
 # --------------------------------------------------
+
 @app.on_event("startup")
 def startup_event():
+    print("Loading NeuroSeek ML models...")
     load_models()
+    print("Models loaded successfully")
 
 
-# ------------------ ROOT ------------------
+# --------------------------------------------------
+# ROOT ENDPOINT
+# --------------------------------------------------
 
 @app.get("/")
 def root():
     return {"message": "NeuroSeek Backend Running 🚀"}
 
+
+# --------------------------------------------------
+# DATABASE TEST
+# --------------------------------------------------
 
 @app.get("/test-db")
 def test_db():
@@ -62,11 +96,15 @@ def test_db():
     return {"database_status": "Connected ✅"}
 
 
-# ------------------ REGISTER ------------------
+# --------------------------------------------------
+# REGISTER USER
+# --------------------------------------------------
 
 @app.post("/register")
 def register(user: UserCreate, db: Session = Depends(get_db)):
+
     existing_user = db.query(User).filter(User.email == user.email).first()
+
     if existing_user:
         raise HTTPException(status_code=400, detail="Email already registered")
 
@@ -84,10 +122,13 @@ def register(user: UserCreate, db: Session = Depends(get_db)):
     return {"message": "User registered successfully ✅"}
 
 
-# ------------------ LOGIN ------------------
+# --------------------------------------------------
+# LOGIN USER
+# --------------------------------------------------
 
 @app.post("/login")
 def login(user: UserCreate, db: Session = Depends(get_db)):
+
     existing_user = db.query(User).filter(User.email == user.email).first()
 
     if not existing_user:
@@ -104,10 +145,13 @@ def login(user: UserCreate, db: Session = Depends(get_db)):
     }
 
 
-# ------------------ PROFILE ------------------
+# --------------------------------------------------
+# PROTECTED PROFILE
+# --------------------------------------------------
 
 @app.get("/profile")
 def get_profile(current_user=Depends(get_current_user)):
+
     return {
         "email": current_user.email,
         "message": "Protected profile access successful 🔐"

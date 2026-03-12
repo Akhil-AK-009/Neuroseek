@@ -1,11 +1,14 @@
 import torch
 import torchaudio
-import numpy as np
+import logging
 from PIL import Image
 from torchvision import transforms
 
 from app.core.model_loader import MODELS, DEVICE
 from app.services.gait_feature_extractor import extract_gait_features
+
+
+logger = logging.getLogger(__name__)
 
 
 # -------------------------------------------------
@@ -34,7 +37,7 @@ mel_transform = torchaudio.transforms.MelSpectrogram(
 
 def run_handwriting_model(image_path, variant="spiral"):
 
-    print(f"[HANDWRITING] Running {variant} model")
+    logger.info(f"[HANDWRITING] Running {variant} model")
 
     model = MODELS[variant]
 
@@ -51,7 +54,7 @@ def run_handwriting_model(image_path, variant="spiral"):
 
         risk_score = probs[0][1].item()
 
-    print(f"[HANDWRITING] {variant} score:", risk_score)
+    logger.info(f"[HANDWRITING] {variant} score: {risk_score}")
 
     return risk_score
 
@@ -62,17 +65,17 @@ def run_handwriting_model(image_path, variant="spiral"):
 
 def run_speech_model(audio_path):
 
-    print("[SPEECH] Running speech model")
+    logger.info("[SPEECH] Running speech model")
 
     model = MODELS["speech"]
 
     waveform, sr = torchaudio.load(audio_path)
 
-    # convert stereo → mono
+    # Convert stereo → mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # resample if needed
+    # Resample if needed
     if sr != 16000:
         waveform = torchaudio.functional.resample(
             waveform,
@@ -82,11 +85,11 @@ def run_speech_model(audio_path):
 
     mel = mel_transform(waveform)
 
-    mel = torch.log(mel + 1e-9)
+    mel = torch.log(mel + 1e-6)
 
-    mel = (mel - mel.mean()) / (mel.std() + 1e-9)
+    mel = (mel - mel.mean()) / (mel.std() + 1e-6)
 
-    # fake RGB channels for CNN
+    # Fake RGB channels for CNN
     mel = mel.repeat(3, 1, 1)
 
     mel = mel.unsqueeze(0).to(DEVICE)
@@ -99,7 +102,7 @@ def run_speech_model(audio_path):
 
         risk_score = probs[0][1].item()
 
-    print("[SPEECH] score:", risk_score)
+    logger.info(f"[SPEECH] score: {risk_score}")
 
     return risk_score
 
@@ -110,7 +113,7 @@ def run_speech_model(audio_path):
 
 def run_gait_model(sequence_tensor):
 
-    print("[GAIT] Running gait CNN")
+    logger.info("[GAIT] Running gait CNN")
 
     model = MODELS["gait"]
 
@@ -124,7 +127,7 @@ def run_gait_model(sequence_tensor):
 
         risk_score = probs[0][1].item()
 
-    print("[GAIT] score:", risk_score)
+    logger.info(f"[GAIT] score: {risk_score}")
 
     return risk_score
 
@@ -135,9 +138,12 @@ def run_gait_model(sequence_tensor):
 
 def run_gait_video_inference(video_path):
 
-    print("[GAIT] Extracting pose features")
+    logger.info("[GAIT] Extracting pose features")
 
     sequence_tensor = extract_gait_features(video_path)
+
+    if sequence_tensor is None:
+        raise ValueError("Gait feature extraction failed")
 
     risk_score = run_gait_model(sequence_tensor)
 
@@ -150,7 +156,7 @@ def run_gait_video_inference(video_path):
 
 def compute_final_risk(hw_score, speech_score, gait_score):
 
-    print("[FUSION] Computing final risk")
+    logger.info("[FUSION] Computing final risk")
 
     final_score = (
         0.30 * hw_score +
@@ -170,7 +176,7 @@ def compute_final_risk(hw_score, speech_score, gait_score):
 
         risk_level = "High"
 
-    print("[FUSION] Final score:", final_score)
+    logger.info(f"[FUSION] Final score: {final_score}")
 
     return final_score, risk_level
 
@@ -186,7 +192,7 @@ def run_full_inference(
     video_path=None
 ):
 
-    print("\n========= NEUROSEEK INFERENCE =========")
+    logger.info("========= NEUROSEEK INFERENCE =========")
 
     handwriting_score = 0
     speech_score = 0
@@ -201,12 +207,11 @@ def run_full_inference(
 
         handwriting_score = (spiral_score + wave_score) / 2
 
-        print("[HANDWRITING] combined score:", handwriting_score)
+        logger.info(f"[HANDWRITING] combined score: {handwriting_score}")
 
     else:
 
-        print("[HANDWRITING] skipped")
-
+        logger.info("[HANDWRITING] skipped")
 
     # ---------------- SPEECH ----------------
 
@@ -216,8 +221,7 @@ def run_full_inference(
 
     else:
 
-        print("[SPEECH] skipped")
-
+        logger.info("[SPEECH] skipped")
 
     # ---------------- GAIT ----------------
 
@@ -227,8 +231,7 @@ def run_full_inference(
 
     else:
 
-        print("[GAIT] skipped")
-
+        logger.info("[GAIT] skipped")
 
     # ---------------- FUSION ----------------
 
@@ -238,17 +241,18 @@ def run_full_inference(
         gait_score
     )
 
-    print("========= INFERENCE COMPLETE =========\n")
+    logger.info("========= INFERENCE COMPLETE =========")
 
     return {
 
-        "handwriting_score": handwriting_score,
+        "handwriting_score": round(handwriting_score, 3),
 
-        "speech_score": speech_score,
 
-        "gait_score": gait_score,
+        "speech_score":round(speech_score, 3),
 
-        "final_risk_score": final_score,
+        "gait_score":  round(gait_score, 3),
+
+        "final_risk_score": round(final_score, 3),
 
         "risk_level": risk_level
     }

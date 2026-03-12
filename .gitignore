@@ -68,7 +68,12 @@ build/
 dist/
 *.egg-info/
 
+# ----------------------------
+# Backend Temporary Files
+# ----------------------------
 backend/temp_audio/
 backend/temp_handwriting/
 backend/temp_videos/
 backend/temp_uploads/
+backend/temp_xai/
+backend/gradcam_outputs/

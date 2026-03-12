@@ -8,21 +8,48 @@ from app.models.patient import Patient
 from app.models.screening import Screening
 from app.schemas.screening import ScreeningCreate
 from app.core.security import get_current_user
+
 from app.services.inference_service import (
     run_full_inference,
     run_gait_video_inference
 )
 
+from app.services.report_service import generate_screening_report
+
+from app.services.gradcam_service import (
+    explain_handwriting_pair,
+    explain_speech
+)
+
+
 router = APIRouter(prefix="/screenings", tags=["Screenings"])
 
 
-# ------------------ CREATE SCREENING (EMPTY) ------------------
+# -------------------------------------------------------
+# Helper function for saving uploaded files
+# -------------------------------------------------------
+
+def save_upload_file(upload_file: UploadFile, folder: str):
+
+    os.makedirs(folder, exist_ok=True)
+
+    file_path = os.path.join(folder, upload_file.filename)
+
+    with open(file_path, "wb") as buffer:
+        shutil.copyfileobj(upload_file.file, buffer)
+
+    return file_path
+
+
+# -------------------------------------------------------
+# CREATE EMPTY SCREENING
+# -------------------------------------------------------
 
 @router.post("")
 def create_screening(
     data: ScreeningCreate,
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
 
     patient = db.query(Patient).filter(
@@ -50,10 +77,18 @@ def create_screening(
     db.commit()
     db.refresh(screening)
 
-    return screening
+    report = generate_screening_report(
+        inference_result,
+        data.patient_id,
+        screening.id
+    )
+
+    return report
 
 
-# ------------------ HANDWRITING SCREENING ------------------
+# -------------------------------------------------------
+# HANDWRITING SCREENING
+# -------------------------------------------------------
 
 @router.post("/handwriting")
 def handwriting_screening(
@@ -61,7 +96,7 @@ def handwriting_screening(
     spiral: UploadFile = File(...),
     wave: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
 
     patient = db.query(Patient).filter(
@@ -73,16 +108,8 @@ def handwriting_screening(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    os.makedirs("temp_handwriting", exist_ok=True)
-
-    spiral_path = f"temp_handwriting/{spiral.filename}"
-    wave_path = f"temp_handwriting/{wave.filename}"
-
-    with open(spiral_path, "wb") as buffer:
-        shutil.copyfileobj(spiral.file, buffer)
-
-    with open(wave_path, "wb") as buffer:
-        shutil.copyfileobj(wave.file, buffer)
+    spiral_path = save_upload_file(spiral, "temp_handwriting")
+    wave_path = save_upload_file(wave, "temp_handwriting")
 
     result = run_full_inference(
         spiral_path=spiral_path,
@@ -103,17 +130,25 @@ def handwriting_screening(
     db.commit()
     db.refresh(screening)
 
-    return screening
+    report = generate_screening_report(
+        result,
+        patient_id,
+        screening.id
+    )
+
+    return report
 
 
-# ------------------ SPEECH SCREENING ------------------
+# -------------------------------------------------------
+# SPEECH SCREENING
+# -------------------------------------------------------
 
 @router.post("/speech")
 def speech_screening(
     patient_id: int,
     audio: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
 
     patient = db.query(Patient).filter(
@@ -125,12 +160,7 @@ def speech_screening(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    os.makedirs("temp_audio", exist_ok=True)
-
-    audio_path = f"temp_audio/{audio.filename}"
-
-    with open(audio_path, "wb") as buffer:
-        shutil.copyfileobj(audio.file, buffer)
+    audio_path = save_upload_file(audio, "temp_audio")
 
     result = run_full_inference(
         audio_path=audio_path
@@ -150,17 +180,25 @@ def speech_screening(
     db.commit()
     db.refresh(screening)
 
-    return screening
+    report = generate_screening_report(
+        result,
+        patient_id,
+        screening.id
+    )
+
+    return report
 
 
-# ------------------ GAIT SCREENING ------------------
+# -------------------------------------------------------
+# GAIT SCREENING
+# -------------------------------------------------------
 
 @router.post("/gait-video")
 def gait_video_screening(
     patient_id: int,
     video: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
 
     patient = db.query(Patient).filter(
@@ -172,14 +210,16 @@ def gait_video_screening(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    os.makedirs("temp_videos", exist_ok=True)
-
-    video_path = f"temp_videos/{video.filename}"
-
-    with open(video_path, "wb") as buffer:
-        shutil.copyfileobj(video.file, buffer)
+    video_path = save_upload_file(video, "temp_videos")
 
     gait_score = run_gait_video_inference(video_path)
+
+    risk_level = "Normal"
+
+    if gait_score >= 0.65:
+        risk_level = "High"
+    elif gait_score >= 0.35:
+        risk_level = "Moderate"
 
     screening = Screening(
         patient_id=patient_id,
@@ -187,7 +227,7 @@ def gait_video_screening(
         speech_score=0.0,
         gait_score=gait_score,
         final_risk_score=gait_score,
-        risk_level="Moderate" if gait_score < 0.65 else "High",
+        risk_level=risk_level,
         is_active=True
     )
 
@@ -195,10 +235,26 @@ def gait_video_screening(
     db.commit()
     db.refresh(screening)
 
-    return screening
+    result = {
+        "handwriting_score": 0.0,
+        "speech_score": 0.0,
+        "gait_score": gait_score,
+        "final_risk_score": gait_score,
+        "risk_level": risk_level
+    }
+
+    report = generate_screening_report(
+        result,
+        patient_id,
+        screening.id
+    )
+
+    return report
 
 
-# ------------------ FULL MULTIMODAL SCREENING ------------------
+# -------------------------------------------------------
+# FULL MULTIMODAL SCREENING
+# -------------------------------------------------------
 
 @router.post("/full")
 def full_multimodal_screening(
@@ -208,7 +264,7 @@ def full_multimodal_screening(
     audio: UploadFile = File(...),
     video: UploadFile = File(...),
     db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+    current_user=Depends(get_current_user)
 ):
 
     patient = db.query(Patient).filter(
@@ -220,24 +276,10 @@ def full_multimodal_screening(
     if not patient:
         raise HTTPException(status_code=404, detail="Patient not found")
 
-    os.makedirs("temp_uploads", exist_ok=True)
-
-    spiral_path = f"temp_uploads/{spiral.filename}"
-    wave_path = f"temp_uploads/{wave.filename}"
-    audio_path = f"temp_uploads/{audio.filename}"
-    video_path = f"temp_uploads/{video.filename}"
-
-    with open(spiral_path, "wb") as buffer:
-        shutil.copyfileobj(spiral.file, buffer)
-
-    with open(wave_path, "wb") as buffer:
-        shutil.copyfileobj(wave.file, buffer)
-
-    with open(audio_path, "wb") as buffer:
-        shutil.copyfileobj(audio.file, buffer)
-
-    with open(video_path, "wb") as buffer:
-        shutil.copyfileobj(video.file, buffer)
+    spiral_path = save_upload_file(spiral, "temp_uploads")
+    wave_path = save_upload_file(wave, "temp_uploads")
+    audio_path = save_upload_file(audio, "temp_uploads")
+    video_path = save_upload_file(video, "temp_uploads")
 
     result = run_full_inference(
         spiral_path=spiral_path,
@@ -260,88 +302,62 @@ def full_multimodal_screening(
     db.commit()
     db.refresh(screening)
 
-    return screening
+    # Handwriting GradCAM
+    explanations = explain_handwriting_pair(
+        spiral_path,
+        wave_path
+    )
+
+    report = generate_screening_report(
+        result,
+        patient_id,
+        screening.id
+    )
+
+    report["explainability"] = explanations
+
+    return report
 
 
-# ------------------ GET PATIENT SCREENINGS ------------------
+# -------------------------------------------------------
+# HANDWRITING GRADCAM API
+# -------------------------------------------------------
 
-@router.get("/patient/{patient_id}")
-def get_patient_screenings(
-    patient_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+@router.post("/explain-handwriting")
+def explain_handwriting(
+    spiral: UploadFile = File(...),
+    wave: UploadFile = File(...),
+    current_user=Depends(get_current_user)
 ):
 
-    screenings = db.query(Screening).join(Patient).filter(
-        Screening.patient_id == patient_id,
-        Patient.created_by == current_user.id,
-        Screening.is_active == True
-    ).all()
+    spiral_path = save_upload_file(spiral, "temp_xai")
+    wave_path = save_upload_file(wave, "temp_xai")
 
-    return screenings
+    result = explain_handwriting_pair(
+        spiral_path,
+        wave_path
+    )
+
+    return {
+        "message": "Grad-CAM generated successfully",
+        "explanations": result
+    }
 
 
-# ------------------ GET SCREENING DETAIL ------------------
+# -------------------------------------------------------
+# SPEECH GRADCAM API
+# -------------------------------------------------------
 
-@router.get("/{screening_id}")
-def get_screening_detail(
-    screening_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
+@router.post("/explain-speech")
+def explain_speech_api(
+    audio: UploadFile = File(...),
+    current_user=Depends(get_current_user)
 ):
 
-    screening = db.query(Screening).join(Patient).filter(
-        Screening.id == screening_id,
-        Patient.created_by == current_user.id
-    ).first()
+    audio_path = save_upload_file(audio, "temp_xai")
 
-    if not screening:
-        raise HTTPException(status_code=404, detail="Screening not found")
+    cam = explain_speech(audio_path)
 
-    return screening
-
-
-# ------------------ DELETE SCREENING ------------------
-
-@router.delete("/{screening_id}")
-def delete_screening(
-    screening_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-
-    screening = db.query(Screening).join(Patient).filter(
-        Screening.id == screening_id,
-        Patient.created_by == current_user.id
-    ).first()
-
-    if not screening:
-        raise HTTPException(status_code=404, detail="Screening not found")
-
-    screening.is_active = False
-    db.commit()
-
-    return {"message": "Screening deleted successfully"}
-
-
-# ------------------ RESTORE SCREENING ------------------
-
-@router.put("/{screening_id}/restore")
-def restore_screening(
-    screening_id: int,
-    db: Session = Depends(get_db),
-    current_user = Depends(get_current_user)
-):
-
-    screening = db.query(Screening).join(Patient).filter(
-        Screening.id == screening_id,
-        Patient.created_by == current_user.id
-    ).first()
-
-    if not screening:
-        raise HTTPException(status_code=404, detail="Screening not found")
-
-    screening.is_active = True
-    db.commit()
-
-    return {"message": "Screening restored"}
+    return {
+        "speech_gradcam": cam
+    }
