@@ -1,7 +1,7 @@
 def generate_screening_report(result, patient_id, screening_id):
 
-    score = result["final_risk_score"]
-    level = result["risk_level"]
+    score = result["final_result"]["risk_score"]
+    level = result["final_result"]["risk_level"]
 
     if level == "Normal":
         interpretation = "No significant Parkinsonian indicators detected."
@@ -25,11 +25,11 @@ def generate_screening_report(result, patient_id, screening_id):
 
         "modalities": {
 
-            "handwriting": result["handwriting_score"],
+            "handwriting": result["modalities"]["handwriting"],
 
-            "speech": result["speech_score"],
+            "speech": result["modalities"]["speech"],
 
-            "gait": result["gait_score"]
+            "gait": result["modalities"]["gait"]
         },
 
         "interpretation": interpretation

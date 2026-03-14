@@ -42,51 +42,6 @@ def save_upload_file(upload_file: UploadFile, folder: str):
 
 
 # -------------------------------------------------------
-# CREATE EMPTY SCREENING
-# -------------------------------------------------------
-
-@router.post("")
-def create_screening(
-    data: ScreeningCreate,
-    db: Session = Depends(get_db),
-    current_user=Depends(get_current_user)
-):
-
-    patient = db.query(Patient).filter(
-        Patient.id == data.patient_id,
-        Patient.created_by == current_user.id,
-        Patient.is_active == True
-    ).first()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
-    inference_result = run_full_inference()
-
-    screening = Screening(
-        patient_id=data.patient_id,
-        handwriting_score=inference_result["handwriting_score"],
-        speech_score=inference_result["speech_score"],
-        gait_score=inference_result["gait_score"],
-        final_risk_score=inference_result["final_risk_score"],
-        risk_level=inference_result["risk_level"],
-        is_active=True
-    )
-
-    db.add(screening)
-    db.commit()
-    db.refresh(screening)
-
-    report = generate_screening_report(
-        inference_result,
-        data.patient_id,
-        screening.id
-    )
-
-    return report
-
-
-# -------------------------------------------------------
 # HANDWRITING SCREENING
 # -------------------------------------------------------
 
@@ -99,44 +54,43 @@ def handwriting_screening(
     current_user=Depends(get_current_user)
 ):
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.created_by == current_user.id,
-        Patient.is_active == True
-    ).first()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
     spiral_path = save_upload_file(spiral, "temp_handwriting")
     wave_path = save_upload_file(wave, "temp_handwriting")
 
-    result = run_full_inference(
-        spiral_path=spiral_path,
-        wave_path=wave_path
-    )
+    try:
 
-    screening = Screening(
-        patient_id=patient_id,
-        handwriting_score=result["handwriting_score"],
-        speech_score=0.0,
-        gait_score=0.0,
-        final_risk_score=result["handwriting_score"],
-        risk_level=result["risk_level"],
-        is_active=True
-    )
+        result = run_full_inference(
+            spiral_path=spiral_path,
+            wave_path=wave_path
+        )
 
-    db.add(screening)
-    db.commit()
-    db.refresh(screening)
+        screening = Screening(
+            patient_id=patient_id,
+            handwriting_score=result["modalities"]["handwriting"],
+            speech_score=0.0,
+            gait_score=0.0,
+            final_risk_score=result["modalities"]["handwriting"],
+            risk_level=result["final_result"]["risk_level"],
+            is_active=True
+        )
 
-    report = generate_screening_report(
-        result,
-        patient_id,
-        screening.id
-    )
+        db.add(screening)
+        db.commit()
+        db.refresh(screening)
 
-    return report
+        report = generate_screening_report(
+            result,
+            patient_id,
+            screening.id
+        )
+
+        return report
+
+    finally:
+        if os.path.exists(spiral_path):
+            os.remove(spiral_path)
+        if os.path.exists(wave_path):
+            os.remove(wave_path)
 
 
 # -------------------------------------------------------
@@ -151,42 +105,37 @@ def speech_screening(
     current_user=Depends(get_current_user)
 ):
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.created_by == current_user.id,
-        Patient.is_active == True
-    ).first()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
     audio_path = save_upload_file(audio, "temp_audio")
 
-    result = run_full_inference(
-        audio_path=audio_path
-    )
+    try:
 
-    screening = Screening(
-        patient_id=patient_id,
-        handwriting_score=0.0,
-        speech_score=result["speech_score"],
-        gait_score=0.0,
-        final_risk_score=result["speech_score"],
-        risk_level=result["risk_level"],
-        is_active=True
-    )
+        result = run_full_inference(audio_path=audio_path)
 
-    db.add(screening)
-    db.commit()
-    db.refresh(screening)
+        screening = Screening(
+            patient_id=patient_id,
+            handwriting_score=0.0,
+            speech_score=result["modalities"]["speech"],
+            gait_score=0.0,
+            final_risk_score=result["modalities"]["speech"],
+            risk_level=result["final_result"]["risk_level"],
+            is_active=True
+        )
 
-    report = generate_screening_report(
-        result,
-        patient_id,
-        screening.id
-    )
+        db.add(screening)
+        db.commit()
+        db.refresh(screening)
 
-    return report
+        report = generate_screening_report(
+            result,
+            patient_id,
+            screening.id
+        )
+
+        return report
+
+    finally:
+        if os.path.exists(audio_path):
+            os.remove(audio_path)
 
 
 # -------------------------------------------------------
@@ -201,55 +150,56 @@ def gait_video_screening(
     current_user=Depends(get_current_user)
 ):
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.created_by == current_user.id,
-        Patient.is_active == True
-    ).first()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
     video_path = save_upload_file(video, "temp_videos")
 
-    gait_score = run_gait_video_inference(video_path)
+    try:
 
-    risk_level = "Normal"
+        gait_score = run_gait_video_inference(video_path)
 
-    if gait_score >= 0.65:
-        risk_level = "High"
-    elif gait_score >= 0.35:
-        risk_level = "Moderate"
+        risk_level = "Normal"
 
-    screening = Screening(
-        patient_id=patient_id,
-        handwriting_score=0.0,
-        speech_score=0.0,
-        gait_score=gait_score,
-        final_risk_score=gait_score,
-        risk_level=risk_level,
-        is_active=True
-    )
+        if gait_score >= 0.65:
+            risk_level = "High"
+        elif gait_score >= 0.35:
+            risk_level = "Moderate"
 
-    db.add(screening)
-    db.commit()
-    db.refresh(screening)
+        screening = Screening(
+            patient_id=patient_id,
+            handwriting_score=0.0,
+            speech_score=0.0,
+            gait_score=gait_score,
+            final_risk_score=gait_score,
+            risk_level=risk_level,
+            is_active=True
+        )
 
-    result = {
-        "handwriting_score": 0.0,
-        "speech_score": 0.0,
-        "gait_score": gait_score,
-        "final_risk_score": gait_score,
-        "risk_level": risk_level
-    }
+        db.add(screening)
+        db.commit()
+        db.refresh(screening)
 
-    report = generate_screening_report(
-        result,
-        patient_id,
-        screening.id
-    )
+        result = {
+            "modalities": {
+                "handwriting": 0.0,
+                "speech": 0.0,
+                "gait": gait_score
+            },
+            "final_result": {
+                "risk_score": gait_score,
+                "risk_level": risk_level
+            }
+        }
 
-    return report
+        report = generate_screening_report(
+            result,
+            patient_id,
+            screening.id
+        )
+
+        return report
+
+    finally:
+        if os.path.exists(video_path):
+            os.remove(video_path)
 
 
 # -------------------------------------------------------
@@ -267,56 +217,54 @@ def full_multimodal_screening(
     current_user=Depends(get_current_user)
 ):
 
-    patient = db.query(Patient).filter(
-        Patient.id == patient_id,
-        Patient.created_by == current_user.id,
-        Patient.is_active == True
-    ).first()
-
-    if not patient:
-        raise HTTPException(status_code=404, detail="Patient not found")
-
     spiral_path = save_upload_file(spiral, "temp_uploads")
     wave_path = save_upload_file(wave, "temp_uploads")
     audio_path = save_upload_file(audio, "temp_uploads")
     video_path = save_upload_file(video, "temp_uploads")
 
-    result = run_full_inference(
-        spiral_path=spiral_path,
-        wave_path=wave_path,
-        audio_path=audio_path,
-        video_path=video_path
-    )
+    try:
 
-    screening = Screening(
-        patient_id=patient_id,
-        handwriting_score=result["handwriting_score"],
-        speech_score=result["speech_score"],
-        gait_score=result["gait_score"],
-        final_risk_score=result["final_risk_score"],
-        risk_level=result["risk_level"],
-        is_active=True
-    )
+        result = run_full_inference(
+            spiral_path=spiral_path,
+            wave_path=wave_path,
+            audio_path=audio_path,
+            video_path=video_path
+        )
 
-    db.add(screening)
-    db.commit()
-    db.refresh(screening)
+        screening = Screening(
+            patient_id=patient_id,
+            handwriting_score=result["modalities"]["handwriting"],
+            speech_score=result["modalities"]["speech"],
+            gait_score=result["modalities"]["gait"],
+            final_risk_score=result["final_result"]["risk_score"],
+            risk_level=result["final_result"]["risk_level"],
+            is_active=True
+        )
 
-    # Handwriting GradCAM
-    explanations = explain_handwriting_pair(
-        spiral_path,
-        wave_path
-    )
+        db.add(screening)
+        db.commit()
+        db.refresh(screening)
 
-    report = generate_screening_report(
-        result,
-        patient_id,
-        screening.id
-    )
+        explanations = explain_handwriting_pair(
+            spiral_path,
+            wave_path
+        )
 
-    report["explainability"] = explanations
+        report = generate_screening_report(
+            result,
+            patient_id,
+            screening.id
+        )
 
-    return report
+        report["explainability"] = explanations
+
+        return report
+
+    finally:
+
+        for path in [spiral_path, wave_path, audio_path, video_path]:
+            if os.path.exists(path):
+                os.remove(path)
 
 
 # -------------------------------------------------------
@@ -333,15 +281,24 @@ def explain_handwriting(
     spiral_path = save_upload_file(spiral, "temp_xai")
     wave_path = save_upload_file(wave, "temp_xai")
 
-    result = explain_handwriting_pair(
-        spiral_path,
-        wave_path
-    )
+    try:
 
-    return {
-        "message": "Grad-CAM generated successfully",
-        "explanations": result
-    }
+        result = explain_handwriting_pair(
+            spiral_path,
+            wave_path
+        )
+
+        return {
+            "message": "Grad-CAM generated successfully",
+            "explanations": result
+        }
+
+    finally:
+
+        if os.path.exists(spiral_path):
+            os.remove(spiral_path)
+        if os.path.exists(wave_path):
+            os.remove(wave_path)
 
 
 # -------------------------------------------------------
@@ -356,8 +313,15 @@ def explain_speech_api(
 
     audio_path = save_upload_file(audio, "temp_xai")
 
-    cam = explain_speech(audio_path)
+    try:
 
-    return {
-        "speech_gradcam": cam
-    }
+        cam = explain_speech(audio_path)
+
+        return {
+            "speech_gradcam": cam
+        }
+
+    finally:
+
+        if os.path.exists(audio_path):
+            os.remove(audio_path)

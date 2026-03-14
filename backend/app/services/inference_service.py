@@ -3,12 +3,32 @@ import torchaudio
 import logging
 from PIL import Image
 from torchvision import transforms
+from pydub import AudioSegment
 
 from app.core.model_loader import MODELS, DEVICE
 from app.services.gait_feature_extractor import extract_gait_features
 
 
 logger = logging.getLogger(__name__)
+
+
+# -------------------------------------------------
+# AUDIO CONVERSION FUNCTION
+# -------------------------------------------------
+
+def convert_audio_to_wav(input_path):
+    """
+    Convert any uploaded audio format to wav.
+    Supports: mp3, m4a, ogg, flac, wav, etc.
+    """
+
+    audio = AudioSegment.from_file(input_path)
+
+    wav_path = input_path + ".wav"
+
+    audio.export(wav_path, format="wav")
+
+    return wav_path
 
 
 # -------------------------------------------------
@@ -69,6 +89,9 @@ def run_speech_model(audio_path):
 
     model = MODELS["speech"]
 
+    # Convert uploaded audio to WAV
+    audio_path = convert_audio_to_wav(audio_path)
+
     waveform, sr = torchaudio.load(audio_path)
 
     # Convert stereo → mono
@@ -82,6 +105,15 @@ def run_speech_model(audio_path):
             sr,
             16000
         )
+
+    # Ensure fixed 3-second input
+    target_length = 16000 * 3
+
+    if waveform.shape[1] > target_length:
+        waveform = waveform[:, :target_length]
+    else:
+        pad = target_length - waveform.shape[1]
+        waveform = torch.nn.functional.pad(waveform, (0, pad))
 
     mel = mel_transform(waveform)
 
@@ -158,22 +190,37 @@ def compute_final_risk(hw_score, speech_score, gait_score):
 
     logger.info("[FUSION] Computing final risk")
 
-    final_score = (
-        0.30 * hw_score +
-        0.20 * speech_score +
-        0.50 * gait_score
-    )
+    scores = []
+    weights = []
+
+    if hw_score > 0:
+        scores.append(hw_score)
+        weights.append(0.30)
+
+    if speech_score > 0:
+        scores.append(speech_score)
+        weights.append(0.20)
+
+    if gait_score > 0:
+        scores.append(gait_score)
+        weights.append(0.50)
+
+    if len(scores) == 0:
+        raise ValueError("No modality provided")
+
+    total_weight = sum(weights)
+
+    normalized_weights = [w / total_weight for w in weights]
+
+    final_score = sum(s * w for s, w in zip(scores, normalized_weights))
 
     if final_score < 0.35:
-
         risk_level = "Normal"
 
     elif final_score < 0.65:
-
         risk_level = "Moderate"
 
     else:
-
         risk_level = "High"
 
     logger.info(f"[FUSION] Final score: {final_score}")
@@ -198,11 +245,13 @@ def run_full_inference(
     speech_score = 0
     gait_score = 0
 
+
     # ---------------- HANDWRITING ----------------
 
     if spiral_path is not None and wave_path is not None:
 
         spiral_score = run_handwriting_model(spiral_path, "spiral")
+
         wave_score = run_handwriting_model(wave_path, "wave")
 
         handwriting_score = (spiral_score + wave_score) / 2
@@ -212,6 +261,7 @@ def run_full_inference(
     else:
 
         logger.info("[HANDWRITING] skipped")
+
 
     # ---------------- SPEECH ----------------
 
@@ -223,6 +273,7 @@ def run_full_inference(
 
         logger.info("[SPEECH] skipped")
 
+
     # ---------------- GAIT ----------------
 
     if video_path is not None:
@@ -232,6 +283,7 @@ def run_full_inference(
     else:
 
         logger.info("[GAIT] skipped")
+
 
     # ---------------- FUSION ----------------
 
@@ -245,14 +297,21 @@ def run_full_inference(
 
     return {
 
-        "handwriting_score": round(handwriting_score, 3),
+        "modalities": {
 
+            "handwriting": round(handwriting_score, 3),
 
-        "speech_score":round(speech_score, 3),
+            "speech": round(speech_score, 3),
 
-        "gait_score":  round(gait_score, 3),
+            "gait": round(gait_score, 3)
 
-        "final_risk_score": round(final_score, 3),
+        },
 
-        "risk_level": risk_level
+        "final_result": {
+
+            "risk_score": round(final_score, 3),
+
+            "risk_level": risk_level
+
+        }
     }
