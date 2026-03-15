@@ -21,7 +21,6 @@ from app.services.gradcam_service import (
     explain_speech
 )
 
-
 router = APIRouter(prefix="/screenings", tags=["Screenings"])
 
 
@@ -256,7 +255,10 @@ def full_multimodal_screening(
             screening.id
         )
 
-        report["explainability"] = explanations
+        report["explainability"] = {
+            "spiral_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{explanations['spiral_gradcam']}",
+            "wave_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{explanations['wave_gradcam']}"
+        }
 
         return report
 
@@ -290,7 +292,10 @@ def explain_handwriting(
 
         return {
             "message": "Grad-CAM generated successfully",
-            "explanations": result
+            "explanations": {
+                "spiral_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{result['spiral_gradcam']}",
+                "wave_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{result['wave_gradcam']}"
+            }
         }
 
     finally:
@@ -315,10 +320,10 @@ def explain_speech_api(
 
     try:
 
-        cam = explain_speech(audio_path)
+        filename = explain_speech(audio_path)
 
         return {
-            "speech_gradcam": cam
+            "speech_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{filename}"
         }
 
     finally:

@@ -3,6 +3,7 @@ import cv2
 import numpy as np
 import os
 import torchaudio
+import time
 
 from PIL import Image
 from torchvision import transforms
@@ -36,7 +37,7 @@ def generate_gradcam(model, input_tensor, target_layer):
         gradients.append(grad_out[0])
 
     handle_f = target_layer.register_forward_hook(forward_hook)
-    handle_b = target_layer.register_backward_hook(backward_hook)
+    handle_b = target_layer.register_full_backward_hook(backward_hook)
 
     input_tensor = input_tensor.to(DEVICE)
 
@@ -72,7 +73,7 @@ def generate_gradcam(model, input_tensor, target_layer):
 
 
 # -------------------------------------------------
-# HANDWRITING GRADCAM
+# HANDWRITING GRADCAM GENERATOR
 # -------------------------------------------------
 
 def generate_handwriting_gradcam(model, image_path, target_layer):
@@ -89,13 +90,20 @@ def generate_handwriting_gradcam(model, image_path, target_layer):
 
     overlay = heatmap * 0.4 + img
 
-    os.makedirs("gradcam_outputs", exist_ok=True)
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    output_dir = os.path.join(BASE_DIR, "gradcam_outputs")
 
-    output_path = f"gradcam_outputs/gradcam_{os.path.basename(image_path)}"
+    os.makedirs(output_dir, exist_ok=True)
+
+    timestamp = int(time.time())
+    base_name = os.path.basename(image_path).split(".")[0]
+
+    filename = f"gradcam_{base_name}_{timestamp}.jpg"
+    output_path = os.path.join(output_dir, filename)
 
     cv2.imwrite(output_path, overlay)
 
-    return output_path
+    return filename
 
 
 # -------------------------------------------------
@@ -108,13 +116,13 @@ def explain_handwriting(image_path, variant="spiral"):
 
     target_layer = model.layer4[-1]
 
-    output_path = generate_handwriting_gradcam(
+    filename = generate_handwriting_gradcam(
         model,
         image_path,
         target_layer
     )
 
-    return output_path
+    return filename
 
 
 # -------------------------------------------------
@@ -153,11 +161,9 @@ def explain_speech(audio_path):
 
     waveform, sr = torchaudio.load(audio_path)
 
-    # stereo → mono
     if waveform.shape[0] > 1:
         waveform = waveform.mean(dim=0, keepdim=True)
 
-    # resample
     if sr != 16000:
         waveform = torchaudio.functional.resample(
             waveform,
@@ -180,7 +186,6 @@ def explain_speech(audio_path):
 
     tensor = mel.unsqueeze(0).to(DEVICE)
 
-    # Detect correct layer automatically
     if hasattr(model, "layer4"):
         target_layer = model.layer4[-1]
     else:
@@ -192,12 +197,11 @@ def explain_speech(audio_path):
         target_layer
     )
 
-    # Convert spectrogram to image
-    spec = mel[0,0].cpu().numpy()
+    spec = mel[0, 0].cpu().numpy()
 
     spec = (spec - spec.min()) / (spec.max() - spec.min() + 1e-8)
 
-    spec = cv2.resize(spec, (224,224))
+    spec = cv2.resize(spec, (224, 224))
 
     spec_img = np.uint8(255 * spec)
 
@@ -210,10 +214,17 @@ def explain_speech(audio_path):
 
     overlay = heatmap * 0.4 + spec_img
 
-    os.makedirs("gradcam_outputs", exist_ok=True)
+    BASE_DIR = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    output_dir = os.path.join(BASE_DIR, "gradcam_outputs")
 
-    output_path = "gradcam_outputs/speech_gradcam.png"
+    os.makedirs(output_dir, exist_ok=True)
+
+    timestamp = int(time.time())
+
+    filename = f"speech_gradcam_{timestamp}.png"
+
+    output_path = os.path.join(output_dir, filename)
 
     cv2.imwrite(output_path, overlay)
 
-    return output_path
+    return filename

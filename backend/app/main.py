@@ -1,7 +1,9 @@
 from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from pathlib import Path
 
 # Database
 from app.db.session import engine
@@ -38,12 +40,25 @@ app = FastAPI(title="NeuroSeek API")
 
 
 # --------------------------------------------------
+# SERVE GRAD-CAM OUTPUT IMAGES
+# --------------------------------------------------
+
+BASE_DIR = Path(__file__).resolve().parent.parent
+
+app.mount(
+    "/gradcam_outputs",
+    StaticFiles(directory=BASE_DIR / "gradcam_outputs"),
+    name="gradcam_outputs"
+)
+
+
+# --------------------------------------------------
 # CORS (for mobile app / frontend)
 # --------------------------------------------------
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],   # For development. Later restrict domain.
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

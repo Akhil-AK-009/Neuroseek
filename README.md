@@ -4,6 +4,7 @@
 ![FastAPI](https://img.shields.io/badge/FastAPI-Backend-green)
 ![PostgreSQL](https://img.shields.io/badge/Database-PostgreSQL-blue)
 ![PyTorch](https://img.shields.io/badge/ML-PyTorch-orange)
+![React Native](https://img.shields.io/badge/Mobile-React%20Native-blue)
 ![Status](https://img.shields.io/badge/Status-Active%20Development-orange)
 ![License](https://img.shields.io/badge/License-MIT-lightgrey)
 
@@ -11,13 +12,15 @@
 
 # 📌 Overview
 
-**NeuroSeek** is a multimodal AI-based Parkinson’s Disease screening system designed to estimate Parkinson’s risk using three neurological signals:
+**NeuroSeek** is a multimodal AI-based Parkinson’s Disease risk screening system designed to estimate Parkinson’s risk using neurological behavioral signals.
 
-- ✍️ Handwriting Analysis  
-- 🎤 Speech Analysis  
-- 🚶 Gait Analysis  
+The system analyzes three modalities:
 
-The system integrates these signals using **weighted multimodal fusion** to produce a **final Parkinson risk score**.
+- ✍️ Handwriting patterns  
+- 🎤 Speech characteristics  
+- 🚶 Gait motion patterns  
+
+Predictions from each modality are combined using **weighted multimodal fusion** to produce a final **Parkinson's risk score**.
 
 NeuroSeek is designed as a **mobile-first AI screening platform** with a scalable FastAPI backend, database integration, and explainability support.
 
@@ -30,7 +33,7 @@ NeuroSeek is designed as a **mobile-first AI screening platform** with a scalabl
 ```
                 ┌─────────────────────────────┐
                 │  Mobile App (React Native) │
-                │       (Planned UI)         │
+                │                             │
                 └──────────────┬─────────────┘
                                │ REST API
                                ▼
@@ -55,6 +58,29 @@ NeuroSeek is designed as a **mobile-first AI screening platform** with a scalabl
                 │ • Audit Logs                │
                 └─────────────────────────────┘
 ```
+
+---
+
+# 📱 Mobile Application
+
+NeuroSeek includes a **React Native mobile application** that enables users to perform Parkinson’s screening.
+
+Current features:
+
+- User authentication  
+- Patient registration  
+- Handwriting screening (spiral & wave)  
+- Real-time ML inference  
+- Risk score visualization  
+- Interpretation reporting  
+
+Upcoming mobile features:
+
+- Speech recording and analysis  
+- Gait video upload  
+- Multimodal screening interface  
+- Screening history dashboard  
+- Explainability visualizations  
 
 ---
 
@@ -87,17 +113,17 @@ Architecture:
 
 Mel Spectrogram  
 ↓  
-ResNet-18 CNN  
+ResNet-18 CNN
 
 Audio preprocessing:
 
-- 16kHz mono standardization  
+- 16 kHz mono standardization  
 - 3-second normalization  
 - Log Mel-spectrogram conversion  
 
 Explainability:
 
-Grad-CAM on Mel Spectrogram
+Grad-CAM heatmaps on spectrograms
 
 ---
 
@@ -109,12 +135,12 @@ MediaPipe Pose Extraction
 ↓  
 150-frame temporal sequence  
 ↓  
-1D CNN  
+1D CNN
 
-Input features:
+Input Features:
 
 272 features  
-(136 joints × x,y)
+(136 joints × x,y coordinates)
 
 Output:
 
@@ -126,15 +152,18 @@ Gait Parkinson Risk Score (0–1)
 
 NeuroSeek combines predictions using **weighted late fusion**.
 
-Final Risk Score =  
-0.30 × Handwriting  
-0.20 × Speech  
-0.50 × Gait  
+Final Risk Score:
+
+```
+Risk = 0.30 × Handwriting
+     + 0.20 × Speech
+     + 0.50 × Gait
+```
 
 Risk Levels:
 
-| Score | Risk |
-|------|------|
+| Score | Risk Level |
+|------|-------------|
 | < 0.35 | Normal |
 | 0.35 – 0.65 | Moderate |
 | > 0.65 | High |
@@ -143,17 +172,16 @@ Risk Levels:
 
 # 📊 Explainable AI
 
-NeuroSeek integrates explainable AI components.
+NeuroSeek integrates explainability techniques to improve model transparency.
 
 Speech  
 Grad-CAM heatmaps on Mel Spectrogram
 
 Gait  
-Pose-based motion pattern analysis  
-Temporal gait feature interpretation
+Pose-based temporal motion analysis
 
 Handwriting  
-CNN activation visualization (planned)
+CNN activation visualization *(planned)*
 
 ---
 
@@ -168,27 +196,31 @@ Neuroseek/
 │   │
 │   │   ├── api/
 │   │   │   └── routes/
-│   │   │
+│   │
 │   │   ├── core/
 │   │   │   ├── config.py
 │   │   │   ├── security.py
 │   │   │   └── model_loader.py
-│   │   │
+│   │
 │   │   ├── models/
 │   │   │   ├── patient.py
 │   │   │   └── screening.py
-│   │   │
+│   │
 │   │   ├── schemas/
-│   │   │
+│   │
 │   │   ├── services/
 │   │   │   ├── inference_service.py
-│   │   │   └── gait_feature_extractor.py
-│   │   │
+│   │   │   ├── gait_feature_extractor.py
+│   │   │   └── gradcam_service.py
+│   │
 │   │   └── main.py
 │   │
 │   ├── ml_models/
 │   │
 │   └── requirements.txt
+│
+├── frontend/
+│   └── React Native Mobile App
 │
 └── README.md
 ```
@@ -201,7 +233,7 @@ Neuroseek/
 
 POST /register  
 POST /login  
-GET /profile  
+GET /profile
 
 ### Patients
 
@@ -291,15 +323,18 @@ Large ML models are **not stored in GitHub**.
 
 Models must be placed locally in:
 
+```
 backend/ml_models/
+```
 
 Example:
 
-ml_models/  
-spiral_model.pth  
-wave_model.pth  
-speech_best_finetuned.pth  
-gait_binary_v1.pth  
+```
+spiral_model.pth
+wave_model.pth
+speech_best_finetuned.pth
+gait_binary_v1.pth
+```
 
 ---
 
@@ -322,22 +357,24 @@ MediaPipe
 scikit-learn  
 NumPy  
 
+Mobile Frontend
+
+React Native  
+Expo  
+Axios API Integration  
+
 Deployment (planned)
 
 Docker  
-Cloud hosting  
-
-Frontend (planned)
-
-React Native mobile app
+Cloud hosting (AWS / Azure)
 
 ---
 
 # 🔐 Ethics & Responsible AI
 
-NeuroSeek is designed for **research and screening support**.
+NeuroSeek is designed as a **screening support system**.
 
-It does **not replace clinical diagnosis** and must always be used alongside professional medical evaluation.
+It does **not replace professional medical diagnosis** and should always be used alongside clinical evaluation.
 
 ---
 

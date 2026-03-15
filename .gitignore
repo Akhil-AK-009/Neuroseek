@@ -36,7 +36,8 @@ Thumbs.db
 .idea/
 
 # ----------------------------
-# Model Files (DO NOT PUSH)
+# Machine Learning Models
+# (DO NOT PUSH LARGE FILES)
 # ----------------------------
 ml_models/
 *.pth
@@ -62,7 +63,7 @@ uploads/
 *.sqlite3
 
 # ----------------------------
-# Build / Distribution
+# Python Build Files
 # ----------------------------
 build/
 dist/
@@ -77,3 +78,29 @@ backend/temp_videos/
 backend/temp_uploads/
 backend/temp_xai/
 backend/gradcam_outputs/
+
+# ----------------------------
+# Node / React Native
+# ----------------------------
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# ----------------------------
+# Expo
+# ----------------------------
+.expo/
+.expo-shared/
+
+# ----------------------------
+# React Native Build Files
+# ----------------------------
+android/build/
+android/app/build/
+ios/build/
+
+# ----------------------------
+# Misc
+# ----------------------------
+coverage/
