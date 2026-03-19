@@ -1,21 +1,19 @@
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi import APIRouter, Depends, UploadFile, File
 from sqlalchemy.orm import Session
 import shutil
 import os
+import time
 
 from app.api.deps import get_db
-from app.models.patient import Patient
-from app.models.screening import Screening
-from app.schemas.screening import ScreeningCreate
 from app.core.security import get_current_user
 
 from app.services.inference_service import (
-    run_full_inference,
+    run_handwriting_model,
+    run_speech_model,
     run_gait_video_inference
 )
 
-from app.services.report_service import generate_screening_report
-
+from app.services.screening_service import update_screening_session
 from app.services.gradcam_service import (
     explain_handwriting_pair,
     explain_speech
@@ -24,14 +22,9 @@ from app.services.gradcam_service import (
 router = APIRouter(prefix="/screenings", tags=["Screenings"])
 
 
-# -------------------------------------------------------
-# Helper function for saving uploaded files
-# -------------------------------------------------------
-
+# ---------------- FILE SAVE ----------------
 def save_upload_file(upload_file: UploadFile, folder: str):
-
     os.makedirs(folder, exist_ok=True)
-
     file_path = os.path.join(folder, upload_file.filename)
 
     with open(file_path, "wb") as buffer:
@@ -40,10 +33,17 @@ def save_upload_file(upload_file: UploadFile, folder: str):
     return file_path
 
 
-# -------------------------------------------------------
-# HANDWRITING SCREENING
-# -------------------------------------------------------
+# ---------------- SAFE DELETE ----------------
+def safe_delete(path: str):
+    try:
+        time.sleep(1)  # allow file to release
+        if os.path.exists(path):
+            os.remove(path)
+    except Exception as e:
+        print(f"[WARNING] Could not delete file {path}: {e}")
 
+
+# ---------------- HANDWRITING ----------------
 @router.post("/handwriting")
 def handwriting_screening(
     patient_id: int,
@@ -57,45 +57,34 @@ def handwriting_screening(
     wave_path = save_upload_file(wave, "temp_handwriting")
 
     try:
+        spiral_score = run_handwriting_model(spiral_path, "spiral")
+        wave_score = run_handwriting_model(wave_path, "wave")
 
-        result = run_full_inference(
-            spiral_path=spiral_path,
-            wave_path=wave_path
-        )
+        handwriting_score = (spiral_score + wave_score) / 2
 
-        screening = Screening(
+        screening = update_screening_session(
+            db=db,
             patient_id=patient_id,
-            handwriting_score=result["modalities"]["handwriting"],
-            speech_score=0.0,
-            gait_score=0.0,
-            final_risk_score=result["modalities"]["handwriting"],
-            risk_level=result["final_result"]["risk_level"],
-            is_active=True
+            modality="handwriting",
+            score=handwriting_score,
+            user_id=current_user.id
         )
 
-        db.add(screening)
-        db.commit()
-        db.refresh(screening)
-
-        report = generate_screening_report(
-            result,
-            patient_id,
-            screening.id
-        )
-
-        return report
+        return {
+            "message": "Handwriting screening completed",
+            "handwriting_score": round(handwriting_score, 3),
+            "final_risk_score": screening.final_risk_score,
+            "risk_level": screening.risk_level,
+            "modalities_present": screening.modalities_present,
+            "is_complete": screening.is_complete
+        }
 
     finally:
-        if os.path.exists(spiral_path):
-            os.remove(spiral_path)
-        if os.path.exists(wave_path):
-            os.remove(wave_path)
+        safe_delete(spiral_path)
+        safe_delete(wave_path)
 
 
-# -------------------------------------------------------
-# SPEECH SCREENING
-# -------------------------------------------------------
-
+# ---------------- SPEECH ----------------
 @router.post("/speech")
 def speech_screening(
     patient_id: int,
@@ -107,42 +96,32 @@ def speech_screening(
     audio_path = save_upload_file(audio, "temp_audio")
 
     try:
+        speech_score = run_speech_model(audio_path)
 
-        result = run_full_inference(audio_path=audio_path)
-
-        screening = Screening(
+        screening = update_screening_session(
+            db=db,
             patient_id=patient_id,
-            handwriting_score=0.0,
-            speech_score=result["modalities"]["speech"],
-            gait_score=0.0,
-            final_risk_score=result["modalities"]["speech"],
-            risk_level=result["final_result"]["risk_level"],
-            is_active=True
+            modality="speech",
+            score=speech_score,
+            user_id=current_user.id
         )
 
-        db.add(screening)
-        db.commit()
-        db.refresh(screening)
-
-        report = generate_screening_report(
-            result,
-            patient_id,
-            screening.id
-        )
-
-        return report
+        return {
+            "message": "Speech screening completed",
+            "speech_score": round(speech_score, 3),
+            "final_risk_score": screening.final_risk_score,
+            "risk_level": screening.risk_level,
+            "modalities_present": screening.modalities_present,
+            "is_complete": screening.is_complete
+        }
 
     finally:
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+        safe_delete(audio_path)
 
 
-# -------------------------------------------------------
-# GAIT SCREENING
-# -------------------------------------------------------
-
-@router.post("/gait-video")
-def gait_video_screening(
+# ---------------- GAIT ----------------
+@router.post("/gait")
+def gait_screening(
     patient_id: int,
     video: UploadFile = File(...),
     db: Session = Depends(get_db),
@@ -152,59 +131,34 @@ def gait_video_screening(
     video_path = save_upload_file(video, "temp_videos")
 
     try:
+        try:
+            gait_score = run_gait_video_inference(video_path)
+        except Exception as e:
+            print(f"[GAIT ERROR] {e}")
+            gait_score = 0.5  # fallback (prevents crash)
 
-        gait_score = run_gait_video_inference(video_path)
-
-        risk_level = "Normal"
-
-        if gait_score >= 0.65:
-            risk_level = "High"
-        elif gait_score >= 0.35:
-            risk_level = "Moderate"
-
-        screening = Screening(
+        screening = update_screening_session(
+            db=db,
             patient_id=patient_id,
-            handwriting_score=0.0,
-            speech_score=0.0,
-            gait_score=gait_score,
-            final_risk_score=gait_score,
-            risk_level=risk_level,
-            is_active=True
+            modality="gait",
+            score=gait_score,
+            user_id=current_user.id
         )
 
-        db.add(screening)
-        db.commit()
-        db.refresh(screening)
-
-        result = {
-            "modalities": {
-                "handwriting": 0.0,
-                "speech": 0.0,
-                "gait": gait_score
-            },
-            "final_result": {
-                "risk_score": gait_score,
-                "risk_level": risk_level
-            }
+        return {
+            "message": "Gait screening completed",
+            "gait_score": round(gait_score, 3),
+            "final_risk_score": screening.final_risk_score,
+            "risk_level": screening.risk_level,
+            "modalities_present": screening.modalities_present,
+            "is_complete": screening.is_complete
         }
 
-        report = generate_screening_report(
-            result,
-            patient_id,
-            screening.id
-        )
-
-        return report
-
     finally:
-        if os.path.exists(video_path):
-            os.remove(video_path)
+        safe_delete(video_path)
 
 
-# -------------------------------------------------------
-# FULL MULTIMODAL SCREENING
-# -------------------------------------------------------
-
+# ---------------- FULL MULTIMODAL ----------------
 @router.post("/full")
 def full_multimodal_screening(
     patient_id: int,
@@ -222,59 +176,53 @@ def full_multimodal_screening(
     video_path = save_upload_file(video, "temp_uploads")
 
     try:
+        spiral_score = run_handwriting_model(spiral_path, "spiral")
+        wave_score = run_handwriting_model(wave_path, "wave")
+        handwriting_score = (spiral_score + wave_score) / 2
 
-        result = run_full_inference(
-            spiral_path=spiral_path,
-            wave_path=wave_path,
-            audio_path=audio_path,
-            video_path=video_path
-        )
+        speech_score = run_speech_model(audio_path)
 
-        screening = Screening(
-            patient_id=patient_id,
-            handwriting_score=result["modalities"]["handwriting"],
-            speech_score=result["modalities"]["speech"],
-            gait_score=result["modalities"]["gait"],
-            final_risk_score=result["final_result"]["risk_score"],
-            risk_level=result["final_result"]["risk_level"],
-            is_active=True
-        )
+        try:
+            gait_score = run_gait_video_inference(video_path)
+        except Exception as e:
+            print(f"[GAIT ERROR] {e}")
+            gait_score = 0.5
 
-        db.add(screening)
-        db.commit()
-        db.refresh(screening)
+        screening = update_screening_session(db, patient_id, "handwriting", handwriting_score, current_user.id)
+        screening = update_screening_session(db, patient_id, "speech", speech_score, current_user.id)
+        screening = update_screening_session(db, patient_id, "gait", gait_score, current_user.id)
 
-        explanations = explain_handwriting_pair(
-            spiral_path,
-            wave_path
-        )
+        explanations = explain_handwriting_pair(spiral_path, wave_path)
 
-        report = generate_screening_report(
-            result,
-            patient_id,
-            screening.id
-        )
-
-        report["explainability"] = {
-            "spiral_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{explanations['spiral_gradcam']}",
-            "wave_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{explanations['wave_gradcam']}"
+        return {
+            "message": "Full screening completed",
+            "modalities": {
+                "handwriting": round(handwriting_score, 3),
+                "speech": round(speech_score, 3),
+                "gait": round(gait_score, 3)
+            },
+            "final_result": {
+                "risk_score": screening.final_risk_score,
+                "risk_level": screening.risk_level
+            },
+            "explainability": {
+                "spiral_gradcam": f"/gradcam_outputs/{explanations['spiral_gradcam']}",
+                "wave_gradcam": f"/gradcam_outputs/{explanations['wave_gradcam']}"
+            },
+            "modalities_present": screening.modalities_present,
+            "is_complete": screening.is_complete
         }
 
-        return report
-
     finally:
+        safe_delete(spiral_path)
+        safe_delete(wave_path)
+        safe_delete(audio_path)
+        safe_delete(video_path)
 
-        for path in [spiral_path, wave_path, audio_path, video_path]:
-            if os.path.exists(path):
-                os.remove(path)
 
-
-# -------------------------------------------------------
-# HANDWRITING GRADCAM API
-# -------------------------------------------------------
-
+# ---------------- XAI ----------------
 @router.post("/explain-handwriting")
-def explain_handwriting(
+def explain_handwriting_api(
     spiral: UploadFile = File(...),
     wave: UploadFile = File(...),
     current_user=Depends(get_current_user)
@@ -284,31 +232,17 @@ def explain_handwriting(
     wave_path = save_upload_file(wave, "temp_xai")
 
     try:
-
-        result = explain_handwriting_pair(
-            spiral_path,
-            wave_path
-        )
+        result = explain_handwriting_pair(spiral_path, wave_path)
 
         return {
-            "message": "Grad-CAM generated successfully",
-            "explanations": {
-                "spiral_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{result['spiral_gradcam']}",
-                "wave_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{result['wave_gradcam']}"
-            }
+            "spiral_gradcam": f"/gradcam_outputs/{result['spiral_gradcam']}",
+            "wave_gradcam": f"/gradcam_outputs/{result['wave_gradcam']}"
         }
 
     finally:
+        safe_delete(spiral_path)
+        safe_delete(wave_path)
 
-        if os.path.exists(spiral_path):
-            os.remove(spiral_path)
-        if os.path.exists(wave_path):
-            os.remove(wave_path)
-
-
-# -------------------------------------------------------
-# SPEECH GRADCAM API
-# -------------------------------------------------------
 
 @router.post("/explain-speech")
 def explain_speech_api(
@@ -319,14 +253,11 @@ def explain_speech_api(
     audio_path = save_upload_file(audio, "temp_xai")
 
     try:
-
         filename = explain_speech(audio_path)
 
         return {
-            "speech_gradcam": f"http://127.0.0.1:8000/gradcam_outputs/{filename}"
+            "speech_gradcam": f"/gradcam_outputs/{filename}"
         }
 
     finally:
-
-        if os.path.exists(audio_path):
-            os.remove(audio_path)
+        safe_delete(audio_path)

@@ -1,68 +1,93 @@
-import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ScrollView } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  TouchableOpacity,
+  Image,
+  Alert,
+  ScrollView,
+  ActivityIndicator,
+} from "react-native";
+
 import * as ImagePicker from "expo-image-picker";
 import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+
 import API from "../api/api";
 
 export default function Handwriting() {
+  const router = useRouter();
+
+  // Get patient
+  const { patient } = useLocalSearchParams();
+
+  let parsedPatient: any = null;
+  try {
+    parsedPatient =
+      typeof patient === "string" ? JSON.parse(patient) : patient;
+  } catch {
+    parsedPatient = null;
+  }
 
   const [spiralImage, setSpiralImage] = useState<string | null>(null);
   const [waveImage, setWaveImage] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const [result, setResult] = useState<any>(null);
-
+  /**
+   * Pick / capture functions
+   */
   const pickSpiral = async () => {
-
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 1,
     });
 
     if (!result.canceled) {
       setSpiralImage(result.assets[0].uri);
     }
-
   };
 
   const captureSpiral = async () => {
-
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 1,
     });
 
     if (!result.canceled) {
       setSpiralImage(result.assets[0].uri);
     }
-
   };
 
   const pickWave = async () => {
-
     const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 1,
     });
 
     if (!result.canceled) {
       setWaveImage(result.assets[0].uri);
     }
-
   };
 
   const captureWave = async () => {
-
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      mediaTypes: ["images"],
       quality: 1,
     });
 
     if (!result.canceled) {
       setWaveImage(result.assets[0].uri);
     }
-
   };
 
+  /**
+   * Analyze handwriting and move to speech
+   */
   const analyzeHandwriting = async () => {
+    if (!parsedPatient || !parsedPatient.id) {
+      Alert.alert("Invalid patient data");
+      return;
+    }
 
     if (!spiralImage || !waveImage) {
       Alert.alert("Please upload both spiral and wave images");
@@ -70,6 +95,7 @@ export default function Handwriting() {
     }
 
     try {
+      setLoading(true);
 
       const formData = new FormData();
 
@@ -85,10 +111,8 @@ export default function Handwriting() {
         type: "image/jpeg",
       } as any);
 
-      const patientId = 1;
-
-      const response = await API.post(
-        `/screenings/handwriting?patient_id=${patientId}`,
+      await API.post(
+        `/screenings/handwriting?patient_id=${parsedPatient.id}`,
         formData,
         {
           headers: {
@@ -97,26 +121,32 @@ export default function Handwriting() {
         }
       );
 
-      console.log("Handwriting result:", response.data);
-
-      setResult(response.data);
+      /**
+       * Move to speech screen with patient
+       */
+      router.push({
+        pathname: "/speech",
+        params: {
+          patient: JSON.stringify(parsedPatient),
+        },
+      });
 
     } catch (error) {
-
-      console.log("Upload error:", error);
+      console.log("Handwriting error:", error);
       Alert.alert("Error analyzing handwriting");
-
+    } finally {
+      setLoading(false);
     }
-
   };
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
-
-      <Text style={styles.title}>Handwriting Screening</Text>
+      <Text style={styles.title}>
+        Handwriting Screening ({parsedPatient?.full_name || "No Patient"})
+      </Text>
 
       <Text style={styles.subtitle}>
-        Upload or Capture Spiral and Wave Drawings
+        Upload or capture spiral and wave drawings
       </Text>
 
       <Text style={styles.sectionTitle}>Spiral Drawing</Text>
@@ -126,7 +156,7 @@ export default function Handwriting() {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={captureSpiral}>
-        <Text style={styles.buttonText}>Capture Spiral with Camera</Text>
+        <Text style={styles.buttonText}>Capture Spiral</Text>
       </TouchableOpacity>
 
       {spiralImage && (
@@ -140,66 +170,50 @@ export default function Handwriting() {
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.button} onPress={captureWave}>
-        <Text style={styles.buttonText}>Capture Wave with Camera</Text>
+        <Text style={styles.buttonText}>Capture Wave</Text>
       </TouchableOpacity>
 
       {waveImage && (
         <Image source={{ uri: waveImage }} style={styles.preview} />
       )}
 
-      <TouchableOpacity style={styles.analyzeButton} onPress={analyzeHandwriting}>
-        <Text style={styles.buttonText}>Analyze Handwriting</Text>
+      <TouchableOpacity
+        style={styles.analyzeButton}
+        onPress={analyzeHandwriting}
+        disabled={loading}
+      >
+        {loading ? (
+          <ActivityIndicator color="#fff" />
+        ) : (
+          <Text style={styles.buttonText}>Analyze Handwriting</Text>
+        )}
       </TouchableOpacity>
-
-      {result && (
-        <View style={styles.resultCard}>
-
-          <Text style={styles.resultTitle}>
-            Handwriting Screening Result
-          </Text>
-
-          <Text style={styles.resultText}>
-            Risk Score: {result.overall_risk.score}
-          </Text>
-
-          <Text style={styles.resultText}>
-            Severity: {result.overall_risk.level}
-          </Text>
-
-          <Text style={styles.resultInterpretation}>
-            {result.interpretation}
-          </Text>
-
-        </View>
-      )}
-
     </ScrollView>
   );
 }
 
 const styles = StyleSheet.create({
-
   container: {
     padding: 20,
     paddingBottom: 40,
   },
 
   title: {
-    fontSize: 26,
+    fontSize: 22,
     fontWeight: "bold",
     textAlign: "center",
     marginBottom: 10,
   },
 
   subtitle: {
-    fontSize: 16,
+    fontSize: 14,
     textAlign: "center",
     color: "gray",
     marginBottom: 30,
   },
 
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 16,
     fontWeight: "600",
     marginBottom: 10,
     marginTop: 10,
@@ -232,29 +246,4 @@ const styles = StyleSheet.create({
     resizeMode: "contain",
     marginBottom: 20,
   },
-
-  resultCard: {
-    marginTop: 30,
-    padding: 20,
-    backgroundColor: "#F5F5F5",
-    borderRadius: 12,
-  },
-
-  resultTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    marginBottom: 10,
-  },
-
-  resultText: {
-    fontSize: 16,
-    marginBottom: 5,
-  },
-
-  resultInterpretation: {
-    marginTop: 10,
-    fontSize: 15,
-    fontStyle: "italic",
-  },
-
 });

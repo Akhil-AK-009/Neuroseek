@@ -2,22 +2,19 @@ import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { router } from "expo-router";
 
 export default function Dashboard() {
-
   return (
     <View style={styles.container}>
 
-      {/* Top Section */}
+      {/* Header */}
       <View style={styles.header}>
-
         <Text style={styles.title}>NeuroSeek</Text>
 
         <Text style={styles.subtitle}>
           Multimodal Parkinson's Screening
         </Text>
-
       </View>
 
-      {/* Bottom Buttons */}
+      {/* Buttons */}
       <View style={styles.buttonContainer}>
 
         <TouchableOpacity
@@ -25,13 +22,6 @@ export default function Dashboard() {
           onPress={() => router.push("/patients")}
         >
           <Text style={styles.buttonText}>Patient Management</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity
-          style={styles.button}
-          onPress={() => router.push("/screening")}
-        >
-          <Text style={styles.buttonText}>Start Screening</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
@@ -48,7 +38,6 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-
   container: {
     flex: 1,
     justifyContent: "space-between",
@@ -88,5 +77,4 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: "600",
   },
-
 });
