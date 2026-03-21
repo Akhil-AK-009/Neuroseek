@@ -30,9 +30,8 @@ export default function ScreeningScreen() {
   const [video, setVideo] = useState<any>(null);
 
   const [recording, setRecording] = useState<any>(null);
-  const [results, setResults] = useState<any>({});
 
-  // 📸 Upload Image
+  // Upload image
   const pickImage = async (setFunc: any) => {
     const res = await ImagePicker.launchImageLibraryAsync({
       mediaTypes: ["images"],
@@ -40,7 +39,7 @@ export default function ScreeningScreen() {
     if (!res.canceled) setFunc(res.assets[0]);
   };
 
-  // 📷 Capture Image
+  // Capture image
   const captureImage = async (setFunc: any) => {
     const res = await ImagePicker.launchCameraAsync({
       mediaTypes: ["images"],
@@ -48,13 +47,13 @@ export default function ScreeningScreen() {
     if (!res.canceled) setFunc(res.assets[0]);
   };
 
-  // 📁 File picker
+  // File picker
   const pickFile = async (setFunc: any) => {
     const res = await DocumentPicker.getDocumentAsync({});
     if (res.assets) setFunc(res.assets[0]);
   };
 
-  // 🎤 Recording
+  // Audio recording
   const startRecording = async () => {
     await Audio.requestPermissionsAsync();
 
@@ -78,7 +77,7 @@ export default function ScreeningScreen() {
     setRecording(null);
   };
 
-  // 🎥 Video record
+  // Video recording
   const recordVideo = async () => {
     const permission = await Camera.requestCameraPermissionsAsync();
     if (!permission.granted) return;
@@ -90,9 +89,11 @@ export default function ScreeningScreen() {
     if (!res.canceled) setVideo(res.assets[0]);
   };
 
-  // ✍️ Handwriting
-  const handleHandwriting = async () => {
-    if (!spiral || !wave) return Alert.alert("Upload both images");
+  // Final full screening
+  const handleFullScreening = async () => {
+    if (!spiral || !wave || !audio || !video) {
+      return Alert.alert("Please provide all inputs");
+    }
 
     const formData = new FormData();
 
@@ -108,59 +109,11 @@ export default function ScreeningScreen() {
       type: "image/jpeg",
     } as any);
 
-    try {
-      const res = await API.post(
-        `/screenings/handwriting?patient_id=${patient_id}`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-
-      setResults((prev: any) => ({
-        ...prev,
-        handwriting_score: res.data.handwriting_score,
-      }));
-
-      setStep(2);
-    } catch (err) {
-      Alert.alert("Handwriting failed");
-    }
-  };
-
-  // 🎤 Speech
-  const handleSpeech = async () => {
-    if (!audio) return Alert.alert("Upload or record audio");
-
-    const formData = new FormData();
-
     formData.append("audio", {
       uri: audio.uri,
       name: audio.name || "audio.wav",
       type: audio.mimeType || "audio/mpeg",
     } as any);
-
-    try {
-      const res = await API.post(
-        `/screenings/speech?patient_id=${patient_id}`,
-        formData,
-        { headers: { "Content-Type": "multipart/form-data" } }
-      );
-
-      setResults((prev: any) => ({
-        ...prev,
-        speech_score: res.data.speech_score,
-      }));
-
-      setStep(3);
-    } catch (err) {
-      Alert.alert("Speech failed");
-    }
-  };
-
-  // 🚶 Gait + FINAL RESULT
-  const handleGait = async () => {
-    if (!video) return Alert.alert("Upload or record video");
-
-    const formData = new FormData();
 
     formData.append("video", {
       uri: video.uri,
@@ -170,30 +123,50 @@ export default function ScreeningScreen() {
 
     try {
       const res = await API.post(
-        `/screenings/gait?patient_id=${patient_id}`,
+        `/screenings/full?patient_id=${patient_id}`,
         formData,
         { headers: { "Content-Type": "multipart/form-data" } }
       );
 
-      const finalData = {
-        handwriting_score: Number(results.handwriting_score || 0),
-        speech_score: Number(results.speech_score || 0),
-        gait_score: Number(res.data.gait_score || 0),
+      console.log("FULL API RESPONSE:", res.data);
 
-        final_score: Number(res.data.final_risk_score || 0), // ✅ FIX
-        risk_level: res.data.risk_level || "Unknown",
+      // Warn if screening is incomplete
+      if (!res.data.is_complete) {
+        Alert.alert("Warning", "Screening is not fully complete");
+      }
+
+      // Extract backend data safely
+      const backendReport = res.data.report || {};
+      const modalities = res.data.modalities || {};
+      const finalResult = res.data.final_result || {};
+
+      // Build final report object (correct mapping)
+      const reportData = {
+        patient_name: backendReport.patient_name || patient_name || "Unknown",
+        patient_age: backendReport.patient_age ?? "N/A",
+        patient_gender: backendReport.patient_gender ?? "N/A",
+
+        handwriting_score: modalities.handwriting ?? 0,
+        speech_score: modalities.speech ?? 0,
+        gait_score: modalities.gait ?? 0,
+
+        final_score: finalResult.risk_score ?? 0,
+        risk_level: finalResult.risk_level ?? "Unknown",
+
+        date: backendReport.date || new Date().toLocaleDateString(),
       };
 
-      console.log("FINAL DATA:", finalData);
+      console.log("FINAL REPORT:", reportData);
 
+      // Navigate to report screen
       router.push({
-        pathname: "/result",
-        params: finalData,
+        pathname: "/report",
+        params: reportData,
       });
 
     } catch (error) {
-      console.log("Gait error:", error);
-      Alert.alert("Gait processing failed");
+      console.log("Full screening error:", error);
+      Alert.alert("Screening failed");
     }
   };
 
@@ -202,6 +175,7 @@ export default function ScreeningScreen() {
       <Text style={styles.title}>Screening: {patient_name}</Text>
       <Text style={styles.step}>Step {step} / 3</Text>
 
+      {/* Step 1 - Handwriting */}
       {step === 1 && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Handwriting</Text>
@@ -214,6 +188,7 @@ export default function ScreeningScreen() {
               <Text>Camera</Text>
             </TouchableOpacity>
           </View>
+
           {spiral && <Image source={{ uri: spiral.uri }} style={styles.preview} />}
 
           <View style={styles.row}>
@@ -224,14 +199,16 @@ export default function ScreeningScreen() {
               <Text>Camera</Text>
             </TouchableOpacity>
           </View>
+
           {wave && <Image source={{ uri: wave.uri }} style={styles.preview} />}
 
-          <TouchableOpacity style={styles.nextBtn} onPress={handleHandwriting}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(2)}>
             <Text style={styles.nextText}>Next → Speech</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {/* Step 2 - Speech */}
       {step === 2 && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Speech</Text>
@@ -250,14 +227,15 @@ export default function ScreeningScreen() {
             </TouchableOpacity>
           )}
 
-          {audio && <Text style={styles.success}>✔ Audio Ready</Text>}
+          {audio && <Text style={styles.success}>Audio Ready</Text>}
 
-          <TouchableOpacity style={styles.nextBtn} onPress={handleSpeech}>
+          <TouchableOpacity style={styles.nextBtn} onPress={() => setStep(3)}>
             <Text style={styles.nextText}>Next → Gait</Text>
           </TouchableOpacity>
         </View>
       )}
 
+      {/* Step 3 - Gait */}
       {step === 3 && (
         <View style={styles.card}>
           <Text style={styles.sectionTitle}>Gait</Text>
@@ -270,9 +248,9 @@ export default function ScreeningScreen() {
             <Text>Record Video</Text>
           </TouchableOpacity>
 
-          {video && <Text style={styles.success}>✔ Video Ready</Text>}
+          {video && <Text style={styles.success}>Video Ready</Text>}
 
-          <TouchableOpacity style={styles.nextBtn} onPress={handleGait}>
+          <TouchableOpacity style={styles.nextBtn} onPress={handleFullScreening}>
             <Text style={styles.nextText}>Generate Result</Text>
           </TouchableOpacity>
         </View>
@@ -281,7 +259,6 @@ export default function ScreeningScreen() {
   );
 }
 
-// 🎨 Styles
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: "#f5f7fb", padding: 16 },
 

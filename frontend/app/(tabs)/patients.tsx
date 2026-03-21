@@ -103,9 +103,10 @@ export default function Patients() {
    */
   const startScreening = (patient: any) => {
     router.push({
-      pathname: "/handwriting",
+      pathname: "/screening",
       params: {
-        patient: JSON.stringify(patient), // ✅ FULL OBJECT
+        patient_id: patient.id,
+        patient_name: patient.full_name,
       },
     });
   };

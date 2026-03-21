@@ -48,7 +48,7 @@ export default function GaitScreen() {
   };
 
   /**
-   * Record video using camera (FIXED HERE)
+   * Record video using camera
    */
   const recordVideo = async () => {
     const permission = await ImagePicker.requestCameraPermissionsAsync();
@@ -59,7 +59,7 @@ export default function GaitScreen() {
     }
 
     const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: ImagePicker.MediaTypeOptions.Videos, // ✅ FIX
+      mediaTypes: ImagePicker.MediaTypeOptions.Videos,
       quality: 1,
     });
 
@@ -122,20 +122,23 @@ export default function GaitScreen() {
       }
 
       /**
-       * Navigate to report screen
+       * Navigate to report screen (FIXED)
        */
       router.push({
         pathname: "/report",
         params: {
-          handwriting_score: data.handwriting_score,
-          speech_score: data.speech_score,
-          gait_score: data.gait_score,
-          final_score: data.final_risk_score,
-          risk_level: data.risk_level,
+          handwriting_score: data.handwriting_score ?? 0,
+          speech_score: data.speech_score ?? 0,
+          gait_score: data.gait_score ?? 0,
+          final_score: data.final_risk_score ?? 0,
+          risk_level: data.risk_level ?? "Unknown",
 
           patient_name: patientData?.full_name || "N/A",
           patient_age: patientData?.age || "N/A",
-          patient_gender: patientData?.gender || "N/A",
+          patient_gender: patientData?.gender?.trim() || "N/A",
+
+          // FIX: Ensure date is always passed
+          date: new Date().toLocaleDateString(),
         },
       });
 

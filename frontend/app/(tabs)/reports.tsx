@@ -3,163 +3,132 @@ import {
   Text,
   StyleSheet,
   TouchableOpacity,
-  ScrollView,
+  FlatList,
+  ActivityIndicator,
 } from "react-native";
 
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useEffect, useState } from "react";
+import { useRouter } from "expo-router";
 
-export default function ReportScreen() {
+import API from "../../api/api";
+
+export default function ReportsScreen() {
   const router = useRouter();
 
-  // Extract params safely
-  const params = useLocalSearchParams();
+  const [loading, setLoading] = useState(true);
+  const [patientsData, setPatientsData] = useState<any[]>([]);
 
-  const handwriting_score = params.handwriting_score;
-  const speech_score = params.speech_score;
-  const gait_score = params.gait_score;
-  const final_score = params.final_score;
-  const risk_level = params.risk_level;
+  // Fetch all reports
+  const fetchReports = async () => {
+    try {
+      const res = await API.get("/screenings/history");
+      const reports = res.data || [];
 
-  const patient_name = params.patient_name;
-  const patient_age = params.patient_age;
-  const patient_gender = params.patient_gender;
+      // Group reports by patient name
+      const grouped: any = {};
 
-  /**
-   * Safe number conversion
-   */
-  const safeNumber = (value: any): number => {
-    const num = Number(value);
-    return isNaN(num) ? 0 : num;
+      reports.forEach((item: any) => {
+        const name = item.patient_name?.trim() || "Unknown";
+
+        if (!grouped[name]) {
+          grouped[name] = [];
+        }
+
+        grouped[name].push(item);
+      });
+
+      // Sort each patient's reports (latest first)
+      Object.keys(grouped).forEach((name) => {
+        grouped[name].sort(
+          (a: any, b: any) =>
+            new Date(b.date).getTime() - new Date(a.date).getTime()
+        );
+      });
+
+      // Format data
+      const formatted = Object.keys(grouped).map((name) => ({
+        patient_name: name,
+        reports: grouped[name],
+        latest: grouped[name][0],
+      }));
+
+      setPatientsData(formatted);
+    } catch (error) {
+      console.log("Error fetching reports:", error);
+    } finally {
+      setLoading(false);
+    }
   };
 
-  /**
-   * Safe text fallback
-   */
-  const safeText = (value: any): string => {
-    if (value === undefined || value === null || value === "") return "N/A";
-    return String(value);
-  };
+  useEffect(() => {
+    fetchReports();
+  }, []);
 
-  /**
-   * Risk color mapping
-   */
-  const getRiskColor = (level: string): string => {
+  const getRiskColor = (level: string) => {
     if (!level) return "#52c41a";
 
     const lower = level.toLowerCase();
 
     if (lower.includes("high")) return "#ff4d4f";
     if (lower.includes("moderate")) return "#faad14";
+
     return "#52c41a";
   };
 
-  const today = new Date().toLocaleDateString();
+  const renderItem = ({ item }: any) => {
+    const latest = item.latest;
 
-  return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <Text style={styles.header}>NeuroSeek Screening Report</Text>
-
-      {/* Patient Info */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Patient Information</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>{safeText(patient_name)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Age</Text>
-          <Text style={styles.value}>{safeText(patient_age)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Gender</Text>
-          <Text style={styles.value}>{safeText(patient_gender)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Date</Text>
-          <Text style={styles.value}>{today}</Text>
-        </View>
-      </View>
-
-      {/* Final Assessment */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Final Assessment</Text>
-
-        <Text style={styles.finalScore}>
-          {safeNumber(final_score).toFixed(2)}
-        </Text>
+    return (
+      <TouchableOpacity
+        style={styles.card}
+        onPress={() =>
+          router.push({
+            pathname: "/patientReports",
+            params: {
+              patient_name: item.patient_name,
+              reports: JSON.stringify(item.reports),
+            },
+          })
+        }
+      >
+        <Text style={styles.name}>{item.patient_name}</Text>
 
         <Text
           style={[
-            styles.riskLevel,
-            { color: getRiskColor(String(risk_level)) },
+            styles.risk,
+            { color: getRiskColor(latest.risk_level) },
           ]}
         >
-          {safeText(risk_level)}
+          {latest.risk_level}
         </Text>
-      </View>
 
-      {/* Modality Scores */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Detailed Modality Scores</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Handwriting Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(handwriting_score).toFixed(2)}
-          </Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Speech Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(speech_score).toFixed(2)}
-          </Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Gait Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(gait_score).toFixed(2)}
-          </Text>
-        </View>
-      </View>
-
-      {/* Disclaimer */}
-      <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Disclaimer</Text>
-
-        <Text style={styles.disclaimer}>
-          This report is generated by an AI-based screening system and is
-          intended for preliminary assessment only. It does not constitute a
-          medical diagnosis. Please consult a qualified healthcare professional
-          for further evaluation and confirmation.
+        <Text style={styles.score}>
+          Score: {Number(latest.final_score).toFixed(2)}
         </Text>
+
+        <Text style={styles.date}>{latest.date}</Text>
+      </TouchableOpacity>
+    );
+  };
+
+  if (loading) {
+    return (
+      <View style={styles.loader}>
+        <ActivityIndicator size="large" />
       </View>
+    );
+  }
 
-      {/* Buttons */}
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={() => router.replace("/dashboard")}
-      >
-        <Text style={styles.primaryText}>Back to Dashboard</Text>
-      </TouchableOpacity>
+  return (
+    <View style={styles.container}>
+      <Text style={styles.header}>Reports</Text>
 
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() => router.replace("/patients")}
-      >
-        <Text style={styles.secondaryText}>Start New Screening</Text>
-      </TouchableOpacity>
-    </ScrollView>
+      <FlatList
+        data={patientsData}
+        keyExtractor={(item) => item.patient_name}
+        renderItem={renderItem}
+      />
+    </View>
   );
 }
 
@@ -170,87 +139,44 @@ const styles = StyleSheet.create({
     padding: 16,
   },
 
-  scrollContent: {
-    paddingBottom: 40,
-  },
-
   header: {
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 20,
+    marginBottom: 16,
   },
 
   card: {
     backgroundColor: "#fff",
     padding: 16,
     borderRadius: 12,
-    marginBottom: 16,
+    marginBottom: 12,
     elevation: 2,
   },
 
-  sectionTitle: {
-    fontSize: 16,
-    fontWeight: "600",
-    marginBottom: 10,
-  },
-
-  row: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    marginVertical: 6,
-  },
-
-  label: {
-    fontSize: 14,
-    color: "#555",
-  },
-
-  value: {
-    fontSize: 14,
-    fontWeight: "500",
-  },
-
-  finalScore: {
-    fontSize: 32,
-    fontWeight: "bold",
-    textAlign: "center",
-    marginVertical: 10,
-  },
-
-  riskLevel: {
+  name: {
     fontSize: 18,
     fontWeight: "600",
-    textAlign: "center",
   },
 
-  disclaimer: {
-    fontSize: 13,
-    color: "#666",
-    lineHeight: 18,
+  risk: {
+    fontSize: 16,
+    marginTop: 4,
   },
 
-  primaryButton: {
-    backgroundColor: "#000",
-    padding: 14,
-    borderRadius: 10,
+  score: {
+    color: "#555",
+    marginTop: 2,
+  },
+
+  date: {
+    color: "#888",
+    marginTop: 2,
+    fontSize: 12,
+  },
+
+  loader: {
+    flex: 1,
+    justifyContent: "center",
     alignItems: "center",
-    marginBottom: 10,
-  },
-
-  primaryText: {
-    color: "#fff",
-    fontWeight: "600",
-  },
-
-  secondaryButton: {
-    backgroundColor: "#eaeaea",
-    padding: 14,
-    borderRadius: 10,
-    alignItems: "center",
-  },
-
-  secondaryText: {
-    color: "#333",
-    fontWeight: "600",
   },
 });

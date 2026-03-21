@@ -19,14 +19,14 @@ export default function Dashboard() {
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/patients")}
+          onPress={() => router.push("/(tabs)/patients")}
         >
           <Text style={styles.buttonText}>Patient Management</Text>
         </TouchableOpacity>
 
         <TouchableOpacity
           style={styles.button}
-          onPress={() => router.push("/reports")}
+          onPress={() => router.push("/(tabs)/reports")}
         >
           <Text style={styles.buttonText}>View Reports</Text>
         </TouchableOpacity>

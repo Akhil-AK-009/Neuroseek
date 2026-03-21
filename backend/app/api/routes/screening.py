@@ -6,6 +6,7 @@ import time
 
 from app.api.deps import get_db
 from app.core.security import get_current_user
+from app.models.screening import Screening
 
 from app.services.inference_service import (
     run_handwriting_model,
@@ -36,7 +37,7 @@ def save_upload_file(upload_file: UploadFile, folder: str):
 # ---------------- SAFE DELETE ----------------
 def safe_delete(path: str):
     try:
-        time.sleep(1)  # allow file to release
+        time.sleep(1)
         if os.path.exists(path):
             os.remove(path)
     except Exception as e:
@@ -52,7 +53,6 @@ def handwriting_screening(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-
     spiral_path = save_upload_file(spiral, "temp_handwriting")
     wave_path = save_upload_file(wave, "temp_handwriting")
 
@@ -92,7 +92,6 @@ def speech_screening(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-
     audio_path = save_upload_file(audio, "temp_audio")
 
     try:
@@ -127,7 +126,6 @@ def gait_screening(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-
     video_path = save_upload_file(video, "temp_videos")
 
     try:
@@ -135,7 +133,7 @@ def gait_screening(
             gait_score = run_gait_video_inference(video_path)
         except Exception as e:
             print(f"[GAIT ERROR] {e}")
-            gait_score = 0.5  # fallback (prevents crash)
+            gait_score = 0.5
 
         screening = update_screening_session(
             db=db,
@@ -169,48 +167,70 @@ def full_multimodal_screening(
     db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
-
     spiral_path = save_upload_file(spiral, "temp_uploads")
     wave_path = save_upload_file(wave, "temp_uploads")
     audio_path = save_upload_file(audio, "temp_uploads")
     video_path = save_upload_file(video, "temp_uploads")
 
     try:
+        # Handwriting
         spiral_score = run_handwriting_model(spiral_path, "spiral")
         wave_score = run_handwriting_model(wave_path, "wave")
         handwriting_score = (spiral_score + wave_score) / 2
 
+        # Speech
         speech_score = run_speech_model(audio_path)
 
+        # Gait
         try:
             gait_score = run_gait_video_inference(video_path)
         except Exception as e:
             print(f"[GAIT ERROR] {e}")
             gait_score = 0.5
 
+        # Update session
         screening = update_screening_session(db, patient_id, "handwriting", handwriting_score, current_user.id)
         screening = update_screening_session(db, patient_id, "speech", speech_score, current_user.id)
         screening = update_screening_session(db, patient_id, "gait", gait_score, current_user.id)
 
         explanations = explain_handwriting_pair(spiral_path, wave_path)
 
+        # 🔥 FINAL RESPONSE WITH FULL REPORT
         return {
             "message": "Full screening completed",
+
             "modalities": {
                 "handwriting": round(handwriting_score, 3),
                 "speech": round(speech_score, 3),
                 "gait": round(gait_score, 3)
             },
+
             "final_result": {
                 "risk_score": screening.final_risk_score,
                 "risk_level": screening.risk_level
             },
+
             "explainability": {
                 "spiral_gradcam": f"/gradcam_outputs/{explanations['spiral_gradcam']}",
                 "wave_gradcam": f"/gradcam_outputs/{explanations['wave_gradcam']}"
             },
+
             "modalities_present": screening.modalities_present,
-            "is_complete": screening.is_complete
+            "is_complete": screening.is_complete,
+
+            # ✅ FIXED REPORT OBJECT
+            "report": {
+                "id": screening.id,
+                "patient_name": screening.patient.full_name,
+                "patient_age": screening.patient.age,
+                "patient_gender": screening.patient.gender,
+                "handwriting_score": screening.handwriting_score,
+                "speech_score": screening.speech_score,
+                "gait_score": screening.gait_score,
+                "final_score": screening.final_risk_score,
+                "risk_level": screening.risk_level,
+                "date": screening.created_at.strftime("%Y-%m-%d")
+            }
         }
 
     finally:
@@ -220,44 +240,33 @@ def full_multimodal_screening(
         safe_delete(video_path)
 
 
-# ---------------- XAI ----------------
-@router.post("/explain-handwriting")
-def explain_handwriting_api(
-    spiral: UploadFile = File(...),
-    wave: UploadFile = File(...),
+# ---------------- HISTORY ----------------
+@router.get("/history")
+def get_screening_history(
+    db: Session = Depends(get_db),
     current_user=Depends(get_current_user)
 ):
+    screenings = (
+        db.query(Screening)
+        .filter(Screening.is_active == True)
+        .order_by(Screening.created_at.desc())
+        .all()
+    )
 
-    spiral_path = save_upload_file(spiral, "temp_xai")
-    wave_path = save_upload_file(wave, "temp_xai")
+    result = []
 
-    try:
-        result = explain_handwriting_pair(spiral_path, wave_path)
+    for s in screenings:
+        result.append({
+            "id": s.id,
+            "patient_name": s.patient.full_name,
+            "patient_age": s.patient.age,
+            "patient_gender": s.patient.gender,
+            "handwriting_score": s.handwriting_score,
+            "speech_score": s.speech_score,
+            "gait_score": s.gait_score,
+            "final_score": s.final_risk_score,
+            "risk_level": s.risk_level,
+            "date": s.created_at.strftime("%Y-%m-%d")
+        })
 
-        return {
-            "spiral_gradcam": f"/gradcam_outputs/{result['spiral_gradcam']}",
-            "wave_gradcam": f"/gradcam_outputs/{result['wave_gradcam']}"
-        }
-
-    finally:
-        safe_delete(spiral_path)
-        safe_delete(wave_path)
-
-
-@router.post("/explain-speech")
-def explain_speech_api(
-    audio: UploadFile = File(...),
-    current_user=Depends(get_current_user)
-):
-
-    audio_path = save_upload_file(audio, "temp_xai")
-
-    try:
-        filename = explain_speech(audio_path)
-
-        return {
-            "speech_gradcam": f"/gradcam_outputs/{filename}"
-        }
-
-    finally:
-        safe_delete(audio_path)
+    return result

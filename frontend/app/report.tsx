@@ -2,185 +2,171 @@ import {
   View,
   Text,
   StyleSheet,
-  TouchableOpacity,
   ScrollView,
+  TouchableOpacity,
 } from "react-native";
 
 import { useLocalSearchParams, useRouter } from "expo-router";
 
 export default function ReportScreen() {
   const router = useRouter();
-
   const params = useLocalSearchParams();
 
-  const {
-    handwriting_score,
-    speech_score,
-    gait_score,
-    final_score,
-    risk_level,
-    patient_name,
-    patient_age,
-    patient_gender,
-  } = params;
+  // FIX: Proper param parsing (Expo Router safe handling)
+  const patient_name =
+    typeof params.patient_name === "string"
+      ? params.patient_name
+      : "N/A";
 
-  /**
-   * Safe number conversion
-   */
-  const safeNumber = (value: any): number => {
-    const num = Number(value);
-    return isNaN(num) ? 0 : num;
-  };
+  const patient_age =
+    typeof params.patient_age === "string"
+      ? params.patient_age
+      : "N/A";
 
-  /**
-   * Safe text fallback
-   */
-  const safeText = (value: any): string => {
-    if (value === undefined || value === null || value === "") return "N/A";
-    return String(value);
-  };
+  const patient_gender =
+    typeof params.patient_gender === "string"
+      ? params.patient_gender
+      : "N/A";
 
-  /**
-   * Risk color mapping
-   */
-  const getRiskColor = (level: any): string => {
+  const date =
+    typeof params.date === "string"
+      ? params.date
+      : new Date().toLocaleDateString();
+
+  const handwriting_score = Number(params.handwriting_score ?? 0);
+  const speech_score = Number(params.speech_score ?? 0);
+  const gait_score = Number(params.gait_score ?? 0);
+
+  const final_score = Number(params.final_score ?? 0);
+
+  const risk_level =
+    typeof params.risk_level === "string"
+      ? params.risk_level
+      : "Unknown";
+
+  // Risk color helper
+  const getRiskColor = (level: string) => {
     if (!level) return "#52c41a";
 
-    const lower = String(level).toLowerCase();
+    const lower = level.toLowerCase();
 
     if (lower.includes("high")) return "#ff4d4f";
     if (lower.includes("moderate")) return "#faad14";
+
     return "#52c41a";
   };
 
-  const today = new Date().toLocaleDateString();
-
   return (
-    <ScrollView
-      style={styles.container}
-      contentContainerStyle={styles.scrollContent}
-      showsVerticalScrollIndicator={false}
-    >
-      {/* Header */}
-      <Text style={styles.header}>NeuroSeek Screening Report</Text>
-
-      {/* Patient Info */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Patient Information</Text>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Name</Text>
-          <Text style={styles.value}>{safeText(patient_name)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Age</Text>
-          <Text style={styles.value}>{safeText(patient_age)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Gender</Text>
-          <Text style={styles.value}>{safeText(patient_gender)}</Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Date</Text>
-          <Text style={styles.value}>{today}</Text>
-        </View>
+    <View style={styles.root}>
+      {/* FIXED HEADER */}
+      <View style={styles.fixedHeader}>
+        <Text style={styles.header}>NeuroSeek Screening Report</Text>
       </View>
 
-      {/* Final Assessment */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Final Assessment</Text>
+      {/* SCROLLABLE CONTENT */}
+      <ScrollView
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        {/* Patient Information */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Patient Information</Text>
 
-        <Text style={styles.finalScore}>
-          {safeNumber(final_score).toFixed(2)}
-        </Text>
+          <Row label="Name" value={patient_name} />
+          <Row label="Age" value={patient_age} />
+          <Row label="Gender" value={patient_gender.trim()} />
+          <Row label="Date" value={date} />
+        </View>
 
-        <Text
-          style={[
-            styles.riskLevel,
-            { color: getRiskColor(risk_level) },
-          ]}
+        {/* Final Assessment */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Final Assessment</Text>
+
+          <Text style={styles.finalScore}>
+            {final_score.toFixed(2)}
+          </Text>
+
+          <Text
+            style={[
+              styles.riskLevel,
+              { color: getRiskColor(risk_level) },
+            ]}
+          >
+            {risk_level}
+          </Text>
+        </View>
+
+        {/* Modality Scores */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Modality Scores</Text>
+
+          <Row label="Handwriting" value={handwriting_score.toFixed(2)} />
+          <Row label="Speech" value={speech_score.toFixed(2)} />
+          <Row label="Gait" value={gait_score.toFixed(2)} />
+        </View>
+
+        {/* Disclaimer */}
+        <View style={styles.card}>
+          <Text style={styles.sectionTitle}>Disclaimer</Text>
+          <Text style={styles.disclaimer}>
+            This report is AI-generated and intended for screening purposes only.
+            Please consult a medical professional for confirmation.
+          </Text>
+        </View>
+
+        {/* Buttons */}
+        <TouchableOpacity
+          style={styles.primaryButton}
+          onPress={() => router.replace("/(tabs)/dashboard")}
         >
-          {safeText(risk_level)}
-        </Text>
-      </View>
+          <Text style={styles.primaryText}>Back to Dashboard</Text>
+        </TouchableOpacity>
 
-      {/* Detailed Scores */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Detailed Modality Scores</Text>
+        <TouchableOpacity
+          style={styles.secondaryButton}
+          onPress={() => router.replace("/(tabs)/patients")}
+        >
+          <Text style={styles.secondaryText}>Start New Screening</Text>
+        </TouchableOpacity>
+      </ScrollView>
+    </View>
+  );
+}
 
-        <View style={styles.row}>
-          <Text style={styles.label}>Handwriting Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(handwriting_score).toFixed(2)}
-          </Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Speech Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(speech_score).toFixed(2)}
-          </Text>
-        </View>
-
-        <View style={styles.row}>
-          <Text style={styles.label}>Gait Analysis</Text>
-          <Text style={styles.value}>
-            {safeNumber(gait_score).toFixed(2)}
-          </Text>
-        </View>
-      </View>
-
-      {/* Disclaimer */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Disclaimer</Text>
-
-        <Text style={styles.disclaimer}>
-          This report is generated by an AI-based screening system and is intended
-          for preliminary assessment only. It does not constitute a medical
-          diagnosis. Please consult a qualified healthcare professional for
-          further evaluation and confirmation.
-        </Text>
-      </View>
-
-      {/* Buttons */}
-      <TouchableOpacity
-        style={styles.primaryButton}
-        onPress={() => router.replace("/dashboard")}
-      >
-        <Text style={styles.primaryText}>Back to Dashboard</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity
-        style={styles.secondaryButton}
-        onPress={() => router.replace("/patients")}
-      >
-        <Text style={styles.secondaryText}>Start New Screening</Text>
-      </TouchableOpacity>
-    </ScrollView>
+// Reusable row component
+function Row({ label, value }: { label: string; value: any }) {
+  return (
+    <View style={styles.row}>
+      <Text style={styles.label}>{label}</Text>
+      <Text style={styles.value}>{value}</Text>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  root: {
     flex: 1,
     backgroundColor: "#f5f7fb",
-    padding: 16,
   },
 
-  scrollContent: {
-    paddingBottom: 40,
+  fixedHeader: {
+    backgroundColor: "#f5f7fb",
+    padding: 16,
+    elevation: 4,
+    zIndex: 10,
   },
 
   header: {
     fontSize: 22,
     fontWeight: "bold",
-    marginBottom: 20,
   },
 
-  section: {
+  scrollContent: {
+    padding: 16,
+    paddingBottom: 80,
+  },
+
+  card: {
     backgroundColor: "#fff",
     padding: 16,
     borderRadius: 12,
@@ -201,12 +187,10 @@ const styles = StyleSheet.create({
   },
 
   label: {
-    fontSize: 14,
     color: "#555",
   },
 
   value: {
-    fontSize: 14,
     fontWeight: "500",
   },
 
@@ -214,19 +198,17 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: "bold",
     textAlign: "center",
-    marginVertical: 10,
   },
 
   riskLevel: {
+    textAlign: "center",
     fontSize: 18,
     fontWeight: "600",
-    textAlign: "center",
   },
 
   disclaimer: {
-    fontSize: 13,
     color: "#666",
-    lineHeight: 18,
+    fontSize: 13,
   },
 
   primaryButton: {
@@ -234,7 +216,7 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: "center",
-    marginBottom: 10,
+    marginTop: 10,
   },
 
   primaryText: {
@@ -247,10 +229,10 @@ const styles = StyleSheet.create({
     padding: 14,
     borderRadius: 10,
     alignItems: "center",
+    marginTop: 10,
   },
 
   secondaryText: {
-    color: "#333",
     fontWeight: "600",
   },
 });
