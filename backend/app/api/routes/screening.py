@@ -173,29 +173,24 @@ def full_multimodal_screening(
     video_path = save_upload_file(video, "temp_uploads")
 
     try:
-        # Handwriting
         spiral_score = run_handwriting_model(spiral_path, "spiral")
         wave_score = run_handwriting_model(wave_path, "wave")
         handwriting_score = (spiral_score + wave_score) / 2
 
-        # Speech
         speech_score = run_speech_model(audio_path)
 
-        # Gait
         try:
             gait_score = run_gait_video_inference(video_path)
         except Exception as e:
             print(f"[GAIT ERROR] {e}")
             gait_score = 0.5
 
-        # Update session
         screening = update_screening_session(db, patient_id, "handwriting", handwriting_score, current_user.id)
         screening = update_screening_session(db, patient_id, "speech", speech_score, current_user.id)
         screening = update_screening_session(db, patient_id, "gait", gait_score, current_user.id)
 
         explanations = explain_handwriting_pair(spiral_path, wave_path)
 
-        # 🔥 FINAL RESPONSE WITH FULL REPORT
         return {
             "message": "Full screening completed",
 
@@ -218,7 +213,6 @@ def full_multimodal_screening(
             "modalities_present": screening.modalities_present,
             "is_complete": screening.is_complete,
 
-            # ✅ FIXED REPORT OBJECT
             "report": {
                 "id": screening.id,
                 "patient_name": screening.patient.full_name,
@@ -240,7 +234,7 @@ def full_multimodal_screening(
         safe_delete(video_path)
 
 
-# ---------------- HISTORY ----------------
+# ---------------- HISTORY (FIXED) ----------------
 @router.get("/history")
 def get_screening_history(
     db: Session = Depends(get_db),
@@ -248,7 +242,11 @@ def get_screening_history(
 ):
     screenings = (
         db.query(Screening)
-        .filter(Screening.is_active == True)
+        .join(Screening.patient)
+        .filter(
+            Screening.is_active == True,
+            Screening.patient.has(created_by=current_user.id)
+        )
         .order_by(Screening.created_at.desc())
         .all()
     )

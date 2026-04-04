@@ -28,37 +28,56 @@ def create_new_session(db: Session, patient_id: int):
     return screening
 
 
+# -------------------------------------------------
+# UPDATED FUSION LOGIC (CALIBRATED + WEIGHTED)
+# -------------------------------------------------
+
 def compute_dynamic_fusion(screening: Screening):
     """
-    Computes final risk score using equal weighting
-    based on available modality scores.
+    Computes final risk score using weighted fusion
+    and corrected thresholds based on real model behavior.
     """
 
     scores = []
+    weights = []
     available = []
 
+    # Handwriting
     if screening.handwriting_score is not None:
         scores.append(screening.handwriting_score)
+        weights.append(0.40)
         available.append("handwriting")
 
+    # Speech (lower weight due to overconfidence)
     if screening.speech_score is not None:
         scores.append(screening.speech_score)
+        weights.append(0.15)
         available.append("speech")
 
+    # Gait
     if screening.gait_score is not None:
         scores.append(screening.gait_score)
+        weights.append(0.45)
         available.append("gait")
 
+    # No modality case
     if not scores:
         return None, None, None, None
 
-    # Equal weighting (simple average)
-    final_score = sum(scores) / len(scores)
+    # Normalize weights
+    total_weight = sum(weights)
+    normalized_weights = [w / total_weight for w in weights]
 
-    # Risk level classification
-    if final_score < 0.35:
+    # Weighted fusion
+    final_score = sum(s * w for s, w in zip(scores, normalized_weights))
+
+    # -------------------------------------------------
+    # UPDATED THRESHOLDS
+    # -------------------------------------------------
+    # Adjusted based on observed score distribution
+    if final_score < 0.55:
         risk_level = "Normal"
-    elif final_score < 0.65:
+    elif final_score < 0.75:
         risk_level = "Moderate"
     else:
         risk_level = "High"
@@ -68,6 +87,10 @@ def compute_dynamic_fusion(screening: Screening):
 
     return final_score, risk_level, modalities_present, is_complete
 
+
+# -------------------------------------------------
+# UPDATE SCREENING SESSION
+# -------------------------------------------------
 
 def update_screening_session(
     db: Session,
@@ -85,7 +108,7 @@ def update_screening_session(
     # Get existing active session
     screening = get_active_session(db, patient_id)
 
-    # If none exists, create new session
+    # Create new session if none exists
     if not screening:
         screening = create_new_session(db, patient_id)
 
@@ -110,7 +133,7 @@ def update_screening_session(
     db.commit()
     db.refresh(screening)
 
-    # 🔥 Log every modality inference
+    # Log inference action
     log_action(
         db=db,
         user_id=user_id,

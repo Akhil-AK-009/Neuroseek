@@ -13,7 +13,7 @@ import { useRouter, useLocalSearchParams } from "expo-router";
 
 import * as ImagePicker from "expo-image-picker";
 import * as DocumentPicker from "expo-document-picker";
-import { Audio } from "expo-av";
+import { Audio, Video } from "expo-av";
 import { Camera } from "expo-camera";
 
 import API from "../api/api";
@@ -30,6 +30,7 @@ export default function ScreeningScreen() {
   const [video, setVideo] = useState<any>(null);
 
   const [recording, setRecording] = useState<any>(null);
+  const [loading, setLoading] = useState(false); //  NEW
 
   // Upload image
   const pickImage = async (setFunc: any) => {
@@ -95,6 +96,8 @@ export default function ScreeningScreen() {
       return Alert.alert("Please provide all inputs");
     }
 
+    setLoading(true); //  START LOADING
+
     const formData = new FormData();
 
     formData.append("spiral", {
@@ -128,19 +131,10 @@ export default function ScreeningScreen() {
         { headers: { "Content-Type": "multipart/form-data" } }
       );
 
-      console.log("FULL API RESPONSE:", res.data);
-
-      // Warn if screening is incomplete
-      if (!res.data.is_complete) {
-        Alert.alert("Warning", "Screening is not fully complete");
-      }
-
-      // Extract backend data safely
       const backendReport = res.data.report || {};
       const modalities = res.data.modalities || {};
       const finalResult = res.data.final_result || {};
 
-      // Build final report object (correct mapping)
       const reportData = {
         patient_name: backendReport.patient_name || patient_name || "Unknown",
         patient_age: backendReport.patient_age ?? "N/A",
@@ -156,19 +150,30 @@ export default function ScreeningScreen() {
         date: backendReport.date || new Date().toLocaleDateString(),
       };
 
-      console.log("FINAL REPORT:", reportData);
+      setLoading(false); //  STOP LOADING
 
-      // Navigate to report screen
       router.push({
         pathname: "/report",
         params: reportData,
       });
 
     } catch (error) {
-      console.log("Full screening error:", error);
+      setLoading(false); // ✅ STOP LOADING
       Alert.alert("Screening failed");
     }
   };
+
+  //  LOADING SCREEN
+  if (loading) {
+    return (
+      <View style={styles.loadingContainer}>
+        <Text style={styles.loadingText}>⏳ Generating Report...</Text>
+        <Text style={styles.subText}>
+          Please wait while we analyze the data
+        </Text>
+      </View>
+    );
+  }
 
   return (
     <ScrollView style={styles.container}>
@@ -222,9 +227,16 @@ export default function ScreeningScreen() {
               <Text>Start Recording</Text>
             </TouchableOpacity>
           ) : (
-            <TouchableOpacity style={styles.optionBtn} onPress={stopRecording}>
-              <Text>Stop Recording</Text>
-            </TouchableOpacity>
+            <>
+              <Text style={styles.recordingText}>🔴 Recording...</Text>
+              <Text style={styles.instruction}>
+                Speak continuously for 3–6 seconds
+              </Text>
+
+              <TouchableOpacity style={styles.stopBtn} onPress={stopRecording}>
+                <Text style={{ color: "#fff" }}>Stop Recording</Text>
+              </TouchableOpacity>
+            </>
           )}
 
           {audio && <Text style={styles.success}>Audio Ready</Text>}
@@ -248,7 +260,19 @@ export default function ScreeningScreen() {
             <Text>Record Video</Text>
           </TouchableOpacity>
 
-          {video && <Text style={styles.success}>Video Ready</Text>}
+          {video && (
+            <>
+              <Text style={styles.success}>Video Preview</Text>
+
+              <Video
+                source={{ uri: video.uri }}
+                style={{ width: "100%", height: 200, borderRadius: 10 }}
+                useNativeControls
+                resizeMode="contain"
+                isLooping
+              />
+            </>
+          )}
 
           <TouchableOpacity style={styles.nextBtn} onPress={handleFullScreening}>
             <Text style={styles.nextText}>Generate Result</Text>
@@ -305,4 +329,39 @@ const styles = StyleSheet.create({
   nextText: { color: "#fff", fontWeight: "bold" },
 
   success: { color: "green", marginBottom: 10 },
+
+  //  NEW STYLES (only additions)
+  recordingText: {
+    color: "red",
+    fontWeight: "bold",
+    marginBottom: 5,
+  },
+
+  instruction: {
+    color: "gray",
+    marginBottom: 10,
+  },
+
+  stopBtn: {
+    backgroundColor: "#EF4444",
+    padding: 12,
+    borderRadius: 10,
+    alignItems: "center",
+  },
+
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+
+  loadingText: {
+    fontSize: 18,
+    fontWeight: "bold",
+  },
+
+  subText: {
+    color: "gray",
+    marginTop: 8,
+  },
 });

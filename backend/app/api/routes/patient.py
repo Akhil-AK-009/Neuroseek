@@ -35,7 +35,7 @@ def create_patient(
 
     return {
         "id": new_patient.id,
-        "message": "Patient created successfully ✅"
+        "message": "Patient created successfully "
     }
 
 
@@ -93,7 +93,7 @@ def update_patient(
 
     db.commit()
 
-    return {"message": "Patient updated successfully ✅"}
+    return {"message": "Patient updated successfully "}
 
 
 # ------------------ SOFT DELETE PATIENT ------------------

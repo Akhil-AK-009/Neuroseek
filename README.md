@@ -67,20 +67,14 @@ NeuroSeek includes a **React Native mobile application** that enables users to p
 
 Current features:
 
-- User authentication  
-- Patient registration  
-- Handwriting screening (spiral & wave)  
+- User authentication (JWT-based secure login)  
+- Patient registration & management  
+- Multimodal screening (Handwriting + Speech + Gait)  
+- Step-based screening workflow  
 - Real-time ML inference  
 - Risk score visualization  
-- Interpretation reporting  
-
-Upcoming mobile features:
-
-- Speech recording and analysis  
-- Gait video upload  
-- Multimodal screening interface  
-- Screening history dashboard  
-- Explainability visualizations  
+- Screening history (user-specific secure access)  
+- Report generation with risk interpretation  
 
 ---
 
@@ -88,21 +82,18 @@ Upcoming mobile features:
 
 ## ✍️ Handwriting Module
 
-Model:
+Model:  
+ResNet-18 CNN  
 
-ResNet-18 CNN
-
-Dataset:
-
-PaHaW Parkinson Handwriting Dataset
+Dataset:  
+PaHaW Parkinson Handwriting Dataset  
 
 Tasks:
 
 - Spiral drawing classification  
 - Wave drawing classification  
 
-Output:
-
+Output:  
 Motor Abnormality Risk Score (0–1)
 
 ---
@@ -113,7 +104,7 @@ Architecture:
 
 Mel Spectrogram  
 ↓  
-ResNet-18 CNN
+ResNet-18 CNN  
 
 Audio preprocessing:
 
@@ -123,7 +114,7 @@ Audio preprocessing:
 
 Explainability:
 
-Grad-CAM heatmaps on spectrograms
+Grad-CAM heatmaps on spectrograms  
 
 ---
 
@@ -135,7 +126,7 @@ MediaPipe Pose Extraction
 ↓  
 150-frame temporal sequence  
 ↓  
-1D CNN
+1D CNN  
 
 Input Features:
 
@@ -155,18 +146,28 @@ NeuroSeek combines predictions using **weighted late fusion**.
 Final Risk Score:
 
 ```
-Risk = 0.30 × Handwriting
-     + 0.20 × Speech
-     + 0.50 × Gait
+Risk = 0.40 × Handwriting
+     + 0.15 × Speech
+     + 0.45 × Gait
 ```
 
 Risk Levels:
 
 | Score | Risk Level |
 |------|-------------|
-| < 0.35 | Normal |
-| 0.35 – 0.65 | Moderate |
-| > 0.65 | High |
+| < 0.55 | Normal |
+| 0.55 – 0.75 | Moderate |
+| > 0.75 | High |
+
+---
+
+# 🔐 Security & Data Privacy
+
+- JWT-based authentication system  
+- User-specific data isolation  
+- Secure API endpoints using token validation  
+- Screening data filtered per logged-in user  
+- Prevention of cross-user data access  
 
 ---
 
@@ -175,13 +176,13 @@ Risk Levels:
 NeuroSeek integrates explainability techniques to improve model transparency.
 
 Speech  
-Grad-CAM heatmaps on Mel Spectrogram
+Grad-CAM heatmaps on Mel Spectrogram  
 
 Gait  
-Pose-based temporal motion analysis
+Pose-based temporal motion analysis  
 
 Handwriting  
-CNN activation visualization *(planned)*
+CNN activation visualization *(implemented in backend)*  
 
 ---
 
@@ -233,36 +234,25 @@ Neuroseek/
 
 POST /register  
 POST /login  
-GET /profile
+GET /profile  
 
 ### Patients
 
 GET /patients  
 POST /patients  
 PUT /patients/{patient_id}  
-DELETE /patients/{patient_id}
+DELETE /patients/{patient_id}  
 
 ### Screenings
 
-Single modality screening:
-
 POST /screenings/handwriting  
 POST /screenings/speech  
-POST /screenings/gait-video  
-
-Full multimodal screening:
-
+POST /screenings/gait  
 POST /screenings/full  
 
-Query screening results:
+### Reports
 
-GET /screenings/patient/{patient_id}  
-GET /screenings/{screening_id}
-
-Administrative operations:
-
-DELETE /screenings/{screening_id}  
-PUT /screenings/{screening_id}/restore
+GET /screenings/history  
 
 ---
 
@@ -271,7 +261,7 @@ PUT /screenings/{screening_id}/restore
 Clone repository
 
 ```
-git clone https://github.com/yourusername/NeuroSeek.git
+git clone https://github.com/Akhil-AK-009/NeuroSeek.git
 cd NeuroSeek/backend
 ```
 
@@ -363,10 +353,11 @@ React Native
 Expo  
 Axios API Integration  
 
-Deployment (planned)
+Deployment (Upcoming)
 
 Docker  
-Cloud hosting (AWS / Azure)
+Render (Backend Hosting)  
+Supabase (Database)  
 
 ---
 
@@ -382,14 +373,13 @@ It does **not replace professional medical diagnosis** and should always be used
 
 Upcoming improvements:
 
-- MediaPipe gait retraining pipeline  
-- Grad-CAM visualization export  
-- SHAP explainability integration  
-- Dockerized backend deployment  
-- Cloud deployment (AWS / Azure)  
+- Full Dockerized deployment  
+- Cloud hosting (Render / AWS)  
+- Explainability visualization in frontend  
 - Screening analytics dashboard  
 - Role-based access control  
 - CI/CD pipeline  
+- Model performance monitoring  
 
 ---
 

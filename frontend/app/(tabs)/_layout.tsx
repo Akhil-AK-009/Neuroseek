@@ -7,7 +7,7 @@ export default function TabLayout() {
 
   const handleLogout = async () => {
     try {
-      await AsyncStorage.removeItem("token");
+      await AsyncStorage.removeItem("access_token");
       Alert.alert("Logged out");
       router.replace("/login");
     } catch (error) {
